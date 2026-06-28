@@ -21,7 +21,7 @@ enum OperationStatusEnum
 - `Fail` - операция отклонена.
 
 **Используется в**
-[[#AddToBuyCardResult]], [[#ChangeBuyCardPositionQuantityResult]], [[#BuyStatus]], [[#CanBuyStatus]], [[#CreateBuyCardResult]], [[#RecreateBuyCardResult]], [[#GetActiveBuyCardResult]], [[#CreateSellCardResult]], [[#RecreateSellCardResult]], [[#GetActiveSellCardResult]], [[#AddToSellCardResult]], [[#CanSellStatus]], [[#SellResult]], [[#GetShopCategoriesResult]], [[#ShopProductsResult]], [[#GetInventoryForSellResult]]
+[[#AddToBuyCardResult]], [[#ChangeBuyCardPositionQuantityResult]], [[#BuyStatus]], [[#CanBuyStatus]], [[#CreateBuyCardResult]], [[#RecreateBuyCardResult]], [[#GetActiveBuyCardResult]], [[#CreateSellCardResult]], [[#RecreateSellCardResult]], [[#GetActiveSellCardResult]], [[#AddToSellCardResult]], [[#ChangeSellCardPositionQuantityResult]], [[#CanSellStatus]], [[#SellResult]], [[#GetShopCategoriesResult]], [[#ShopProductsResult]], [[#GetDescriptionByPrefabResult]], [[#GetInventoryForSellResult]]
 
 ### BuyCard
 
@@ -455,20 +455,22 @@ class SellCardPosition
 	string prefabName;
 	string[] entityUids;
 	int quantity;
+	int unitPrice;
 	int lineSum;
 }
 ```
 
 **Назначение**
-Одна агрегированная строка корзины продажи для UI: имя, префаб, количество, список сущностей, сумма по строке.
+Одна агрегированная строка корзины продажи. Для UI: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`.
 
 **Свойства**
 - `uid: string` - идентификатор строки в корзине продажи.
 - `name: string` - отображаемое имя позиции (как у [[#ShopProduct]] `name`; обычно совпадает с именем товара; приходит в данных позиции вместе с агрегатом строки).
 - `prefabName: string` - имя префаба для строки; приходит в данных позиции в составе актуального состояния корзины.
-- `entityUids: string[]` - uid игровых сущностей в строке; состав и агрегация задаются в данных корзины (не передаётся вызывающим кодом в TradeManager при [[TradeManager.SellMethods.md#addToSellCard]]).
-- `quantity: int` - количество для отображения и проверок; приходит в агрегированных данных позиции/корзины (не выводится на клиенте из длины `entityUids`).
-- `lineSum: int` - сумма по строке для блока корзины (минимальная денежная единица мира / условные единицы — по правилам проекта); приходит в данных позиции вместе с агрегатом строки.
+- `entityUids: string[]` - uid игровых сущностей в строке; состав задаётся TradeManager при [[TradeManager.SellMethods.md#addToSellCard]] и [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]]. Клиент UI не передаёт и не использует это поле (аналог отсутствия entity-id в [[#BuyCardPosition]]).
+- `quantity: int` - количество для отображения и проверок; приходит в агрегированных данных позиции/корзины.
+- `unitPrice: int` - цена выкупа за единицу на момент формирования или обновления строки (в минимальных денежных единицах мира / условных единицах — по правилам проекта); согласована с ценой из соответствующего агрегата инвентаря.
+- `lineSum: int` - сумма по строке с учётом `quantity` (`unitPrice * quantity`; те же единицы, что у [[#ShopProduct]] `unitPrice`); пересчитывается TradeManager при [[TradeManager.SellMethods.md#addToSellCard]] и [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]].
 
 **Связано**
 [[#SellCard]]
@@ -584,10 +586,10 @@ class AddToSellCardResult
 ```
 
 **Свойства**
-- `status: OperationStatusEnum` - итог добавления сущности в корзину продажи.
+- `status: OperationStatusEnum` - итог добавления в корзину продажи.
 - `failReason: AddToSellCardFailReasonEnum` - причина отказа при `status = Fail`.
 - `positionUid: string` - идентификатор строки [[#SellCardPosition]] (`uid`), к которой относится результат после обновления корзины (новая или обновлённая агрегированная строка).
-- `allowedShopUids: string[]` - список магазинов, где сущность можно продать. Заполняется при `failReason = CannotSellEntityInShop`.
+- `allowedShopUids: string[]` - список магазинов, где продажа разрешена. Заполняется при `failReason = CannotSellEntityInShop`.
 
 **Связано**
 [[#OperationStatusEnum]], [[#AddToSellCardFailReasonEnum]]
@@ -598,24 +600,64 @@ class AddToSellCardResult
 ```
 enum AddToSellCardFailReasonEnum
 {
-	case CannotAddSellEntityNotFound;
-	case CannotAddDuplicateEntityUid;
+	case CannotAddInventoryPositionNotFound;
+	case CannotAddQuantityExceedsInventory;
+	case CannotUseNonPositiveQuantity;
 	case CannotSellEntity;
 	case CannotSellEntityInShop;
 }
 ```
 
 **Назначение**
-Причины отказа при добавлении сущности в корзину продажи.
+Причины отказа при добавлении в корзину продажи.
 
 **Значения**
-- `CannotAddSellEntityNotFound` - не найдена сущность с указанным `entityUid`.
-- `CannotAddDuplicateEntityUid` - сущность с таким `entityUid` уже учтена в корзине продажи (в любой строке, в любой из `entityUids`).
-- `CannotSellEntity` - сущность нельзя продать ни в одном магазине.
-- `CannotSellEntityInShop` - сущность нельзя продать в текущем магазине.
+- `CannotAddInventoryPositionNotFound` - не найдена агрегированная строка инвентаря с указанным `inventoryPositionUid` в контексте персонажа и магазина корзины.
+- `CannotAddQuantityExceedsInventory` - запрошенное количество вместе с уже учтёнными в [[#SellCard]] сущностями того же агрегата превышает `quantity` строки инвентаря.
+- `CannotUseNonPositiveQuantity` - количество должно быть больше 0.
+- `CannotSellEntity` - сущности агрегата нельзя продать ни в одном магазине.
+- `CannotSellEntityInShop` - сущности агрегата нельзя продать в текущем магазине.
 
 **Используется в**
 [[#AddToSellCardResult]]
+
+### ChangeSellCardPositionQuantityResult
+
+**Сигнатура**
+```
+class ChangeSellCardPositionQuantityResult
+{
+	OperationStatusEnum status;
+	ChangeSellCardPositionQuantityFailReasonEnum failReason;
+}
+```
+
+**Назначение**
+Результат выполнения метода [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]].
+
+**Связано**
+[[#OperationStatusEnum]], [[#ChangeSellCardPositionQuantityFailReasonEnum]]
+
+### ChangeSellCardPositionQuantityFailReasonEnum
+
+**Сигнатура**
+```
+enum ChangeSellCardPositionQuantityFailReasonEnum
+{
+	case CannotUseNonPositiveQuantity;
+	case CannotAddQuantityExceedsInventory;
+}
+```
+
+**Назначение**
+Причины отказа при изменении количества позиции корзины продажи.
+
+**Значения**
+- `CannotUseNonPositiveQuantity` - новое количество должно быть больше 0.
+- `CannotAddQuantityExceedsInventory` - при увеличении `newQuantity` вместе с сущностями того же агрегата в других строках корзины превышен фактический `quantity` в инвентаре.
+
+**Используется в**
+[[#ChangeSellCardPositionQuantityResult]]
 
 ### CanSellStatus
 
@@ -825,6 +867,48 @@ enum ShopProductsFailReasonEnum
 **Используется в**
 [[#ShopProductsResult]]
 
+### GetDescriptionByPrefabResult
+
+**Сигнатура**
+```
+class GetDescriptionByPrefabResult
+{
+	OperationStatusEnum status;
+	GetDescriptionByPrefabFailReasonEnum failReason;
+	string description;
+}
+```
+
+**Назначение**
+Результат выполнения метода [[TradeManager.ShopMethods.md#getDescriptionByPrefab]].
+
+**Свойства**
+- `status: OperationStatusEnum` - итог запроса описания.
+- `failReason: GetDescriptionByPrefabFailReasonEnum` - причина при `status = Fail`.
+- `description: string` - текстовое описание товара при `status = Ok`; при `Fail` не используется. Пустая строка допустима при `Ok`, если префаб известен каталогу, но описание не задано.
+
+**Связано**
+[[#OperationStatusEnum]], [[#GetDescriptionByPrefabFailReasonEnum]]
+
+### GetDescriptionByPrefabFailReasonEnum
+
+**Сигнатура**
+```
+enum GetDescriptionByPrefabFailReasonEnum
+{
+	case PrefabNotFound;
+}
+```
+
+**Назначение**
+Причины отказа при запросе текстового описания по префабу.
+
+**Значения**
+- `PrefabNotFound` - префаб с указанным `prefabName` не найден в каталоге TradeManager или для него нет метаданных описания.
+
+**Используется в**
+[[#GetDescriptionByPrefabResult]]
+
 ### GetInventoryForSellResult
 
 **Сигнатура**
@@ -881,7 +965,7 @@ class InventoryForSell
 ```
 
 **Назначение**
-Агрегированный снимок инвентаря персонажа для UI продажи в выбранном магазине: строки по префабу и общая сумма по тем строкам, которые попали в `positions` с учётом флага `isExcludeNotAvailableForSell` в [[TradeManager.SellMethods.md#getInventoryForSell]].
+Агрегированный снимок инвентаря персонажа для UI продажи в выбранном магазине: строки по префабу и общая сумма по тем строкам, которые попали в `positions` с учётом флага `isExcludeNotAvailableForSell` в [[TradeManager.SellMethods.md#getInventoryForSell]]. Поле `quantity` в строках отражает фактическое количество в инвентаре; до успешного `sell` оно не уменьшается из‑за позиций в корзине.
 
 **Свойства**
 - `positions: InventoryProductPosition[]` - агрегированные строки (после фильтрации по `isExcludeNotAvailableForSell`, если он задан в `true`).
@@ -896,10 +980,11 @@ class InventoryForSell
 ```
 class InventoryProductPosition
 {
+	string uid;
 	string name;
 	string prefabName;
-	string[] entityUids;
 	int quantity;
+	int unitPrice;
 	int lineSum;
 	bool isAvailableForSell;
 	SellFailReasonEnum sellFailReason;
@@ -908,14 +993,15 @@ class InventoryProductPosition
 ```
 
 **Назначение**
-Одна агрегированная строка снимка инвентаря для продажи: префаб, количество, список сущностей, сумма по строке в контексте `shopUid`, признак доступности к продаже в этом магазине и детали отказа (согласованы с проверками [[TradeManager.SellMethods.md#canSellCard]] по смыслу `CannotSellEntity` / `CannotSellEntityInShop`).
+Одна агрегированная строка снимка инвентаря для продажи: идентификатор строки, префаб, фактическое количество в инвентаре, цена выкупа за единицу и сумма по строке в контексте `shopUid`, признак доступности к продаже в этом магазине и детали отказа (согласованы с проверками [[TradeManager.SellMethods.md#canSellCard]] по смыслу `CannotSellEntity` / `CannotSellEntityInShop`). Симметрия с [[#ShopProduct]]: `uid` передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`, `unitPrice` — цена за единицу в контексте магазина.
 
 **Свойства**
+- `uid: string` - стабильный идентификатор агрегированной строки в контексте `(characterUid, shopUid, ключ агрегации)`; тот же id, что передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`. Стабилен между повторными вызовами [[TradeManager.SellMethods.md#getInventoryForSell]], пока не меняется состав агрегата (по умолчанию ключ агрегации = `prefabName`).
 - `name: string` - отображаемое имя (как у [[#ShopProduct]]; источник — по правилам проекта).
 - `prefabName: string` - имя префаба для строки.
-- `entityUids: string[]` - uid игровых сущностей, вошедших в агрегат (для добавления в [[#SellCard]] через [[TradeManager.SellMethods.md#addToSellCard]]).
-- `quantity: int` - количество в строке; согласовано с агрегатом и проверками (не обязательно равно длине `entityUids`, если семантика количества задаётся правилами проекта).
-- `lineSum: int` - сумма выкупа по строке в контексте указанного магазина (те же единицы и смысл, что поле `lineSum` у [[#SellCardPosition]]).
+- `quantity: int` - фактическое количество единиц в агрегате у персонажа в инвентаре. До успешного [[TradeManager.SellMethods.md#sell]] не уменьшается из‑за сущностей, уже учтённых в [[#SellCard]].
+- `unitPrice: int` - цена выкупа за единицу в контексте магазина из [[TradeManager.SellMethods.md#getInventoryForSell]] (в минимальных денежных единицах мира / условных единицах — по правилам проекта; тот же смысл, что у [[#ShopProduct]] `unitPrice`).
+- `lineSum: int` - сумма выкупа по строке с учётом `quantity` (`unitPrice * quantity`; те же единицы, что поле `lineSum` у [[#SellCardPosition]]).
 - `isAvailableForSell: bool` - можно ли продать все сущности строки в текущем `shopUid` (и при необходимости «вообще» — по правилам проекта).
 - `sellFailReason: SellFailReasonEnum` - при `isAvailableForSell = false` указывает причину недоступности; ожидаемые значения на уровне строки: `CannotSellEntity`, `CannotSellEntityInShop` (остальные значения [[#SellFailReasonEnum]] относятся к корзине целиком и на строке не используются). При `isAvailableForSell = true` не используется.
 - `allowedShopUids: string[]` - при `isAvailableForSell = false` и `sellFailReason = CannotSellEntityInShop` — список магазинов, где продажа разрешена (как у [[#AddToSellCardResult]] / [[#CanSellStatus]]); иначе не используется.

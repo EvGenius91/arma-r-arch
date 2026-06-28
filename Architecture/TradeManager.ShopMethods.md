@@ -42,3 +42,21 @@ getProductsForBuyByCharacter(string shopUid, string categoryUid, string characte
 - `ShopNotFound`
 - `CategoryNotFound`
 - `CharacterNotFound`
+
+### getDescriptionByPrefab
+
+**Сигнатура**
+getDescriptionByPrefab(string prefabName): [[TradeManager.Entities.md#GetDescriptionByPrefabResult]]
+
+**Аргументы**
+- `prefabName: string` - имя префаба товара (как у [[TradeManager.Entities.md#ShopProduct]] `prefabName`).
+
+**Описание**
+Возвращает текстовое описание товара для UI. Источник — метаданные каталога по правилам проекта. Используется при отображении деталей позиции в магазине, корзине или инвентаре, когда известен только `prefabName`.
+
+**Результат**
+- При успехе возвращает `status = Ok` и `description`.
+- При отказе возвращает `status = Fail` и `failReason`.
+
+**Ошибки / причины отказа**
+- `PrefabNotFound`

@@ -3,6 +3,16 @@
 Назад: [[TradeManager.md]]
 Сущности: [[TradeManager.Entities.md]]
 
+### Поток UI продажи
+
+Симметрия с покупкой: клиент работает с `uid` агрегированной строки и `quantity`, без выбора и синхронизации `entityUid`.
+
+1. [[#getInventoryForSell]] → список строк с `uid`, `quantity`
+2. [[#getActiveSellCard]] → корзина
+3. Добавление: `addToSellCard(sellCardUid, inventoryPositionUid, quantity)`
+4. Изменение в корзине: `changeSellCardPositionQuantity(sellCardPositionUid, newQuantity)`
+5. Переключение buy ↔ sell: перезапросить оба снимка — синхронизация `entityUid` на клиенте не нужна
+
 ### createSellCard
 
 **Сигнатура**
@@ -13,7 +23,7 @@ createSellCard(string shopUid, string characterUid): [[TradeManager.Entities.md#
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине: в ней затем набираются позиции на продажу. После появления строк они приходят в виде агрегированных [[TradeManager.Entities.md#SellCardPosition]] (`name`, `prefabName`, `quantity`, `entityUids`, `lineSum`) в данных корзины.
+Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине: в ней затем набираются позиции на продажу. После появления строк они приходят в виде агрегированных [[TradeManager.Entities.md#SellCardPosition]] (`uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`) в данных корзины.
 
 **Проверки**
 - У персонажа не должно быть другой активной корзины продажи.
@@ -35,7 +45,7 @@ recreateSellCard(string shopUid, string characterUid): [[TradeManager.Entities.m
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. Если у персонажа уже есть активная корзина продажи, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToSellCard`, `canSellCard`, `sell` и т.д.); прежний `sellCardUid` после успешного вызова недействителен.
+Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. Если у персонажа уже есть активная корзина продажи, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToSellCard`, `changeSellCardPositionQuantity`, `canSellCard`, `sell` и т.д.); прежний `sellCardUid` после успешного вызова недействителен.
 
 Для первого создания корзины без сброса существующей используйте [[#createSellCard]].
 
@@ -51,7 +61,7 @@ getActiveSellCard(string characterUid): [[TradeManager.Entities.md#GetActiveSell
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа, если она есть. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `name`, `prefabName`, `quantity`, `entityUids`, `lineSum`) для UI.
+Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа, если она есть. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`) для UI.
 
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `card`.
@@ -71,7 +81,9 @@ getInventoryForSell(string characterUid, string shopUid, bool isExcludeNotAvaila
 - `isExcludeNotAvailableForSell: bool` - если `true`, в ответ попадают только агрегированные строки, доступные для продажи в указанном `shopUid`; если `false` — все агрегированные строки инвентаря персонажа, с отметкой доступности и причиной / `allowedShopUids` на уровне строки (см. [[TradeManager.Entities.md#InventoryProductPosition]]).
 
 **Описание**
-Собирает элементы инвентаря персонажа (владение персонажем, объём инвентаря/контейнеров — по правилам проекта) и возвращает [[TradeManager.Entities.md#InventoryForSell]]: массив [[TradeManager.Entities.md#InventoryProductPosition]] с полями в духе [[TradeManager.Entities.md#SellCardPosition]] (`name`, `prefabName`, `quantity`, `entityUids`, `lineSum`) плюс признак и детали доступности к продаже в текущем магазине, а также [[TradeManager.Entities.md#InventoryForSell]] `totalAmount` — сумма `lineSum` по всем строкам в `positions` (после фильтра при `isExcludeNotAvailableForSell = true`).
+Собирает элементы инвентаря персонажа (владение персонажем, объём инвентаря/контейнеров — по правилам проекта) и возвращает [[TradeManager.Entities.md#InventoryForSell]]: массив [[TradeManager.Entities.md#InventoryProductPosition]] с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum` плюс признак и детали доступности к продаже в текущем магазине, а также [[TradeManager.Entities.md#InventoryForSell]] `totalAmount` — сумма `lineSum` по всем строкам в `positions` (после фильтра при `isExcludeNotAvailableForSell = true`).
+
+`quantity` в каждой строке — фактическое количество в инвентаре; до успешного [[#sell]] не уменьшается из‑за позиций в корзине. Повторный вызов после переключения режима покупки/продажи не требует клиентской синхронизации `entityUid`.
 
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `inventoryForSell` (в т.ч. `positions` и `totalAmount`).
@@ -84,30 +96,57 @@ getInventoryForSell(string characterUid, string shopUid, bool isExcludeNotAvaila
 ### addToSellCard
 
 **Сигнатура**
-addToSellCard(string sellCardUid, string entityUid): [[TradeManager.Entities.md#AddToSellCardResult]]
+addToSellCard(string sellCardUid, string inventoryPositionUid, int quantity): [[TradeManager.Entities.md#AddToSellCardResult]]
 
 **Аргументы**
 - `sellCardUid: string` - идентификатор корзины продажи.
-- `entityUid: string` - уникальный идентификатор игровой сущности для продажи.
+- `inventoryPositionUid: string` - идентификатор агрегированной строки инвентаря (`uid` из [[TradeManager.Entities.md#InventoryProductPosition]], полученный из [[#getInventoryForSell]]).
+- `quantity: int` - добавляемое количество.
 
 **Описание**
-Префаб не передаётся параметром: задаются `sellCardUid` и `entityUid`. После успеха актуальное состояние корзины (включая агрегированные [[TradeManager.Entities.md#SellCardPosition]] с `name`, `prefabName`, `quantity`, `entityUids`, `lineSum`) приходит в данных [[TradeManager.Entities.md#SellCard]]; TradeManager на стороне игры не собирает строки и не подставляет префаб по локальной сущности. Владение предметами персонажем и положительная сумма продажи проверяются в [[#canSellCard]] и [[#sell]], а не в этом методе.
+TradeManager по `inventoryPositionUid` находит агрегат в инвентаре персонажа в контексте `SellCard.shopUid`, выбирает `quantity` свободных сущностей (не уже в корзине), добавляет или обновляет [[TradeManager.Entities.md#SellCardPosition]], заполняет `unitPrice` из агрегата и пересчитывает `lineSum` (`unitPrice * quantity`). Симметрия с [[TradeManager.BuyMethods.md#addToBuyCard]]: клиент передаёт id строки каталога/инвентаря и количество; конкретные `entityUid` выбирает TradeManager.
+
+После успеха актуальное состояние корзины приходит в данных [[TradeManager.Entities.md#SellCard]]. Владение предметами персонажем и положительная сумма продажи проверяются в [[#canSellCard]] и [[#sell]], а не в этом методе.
 
 **Проверки**
-- Сущность с `entityUid` должна существовать (иначе `CannotAddSellEntityNotFound`).
-- `entityUid` не должен встречаться ни в одном списке `entityUids` ни одной позиции корзины (иначе `CannotAddDuplicateEntityUid`).
-- Предмет должен быть доступен для продажи.
-- Продажа должна быть разрешена в текущем магазине: у [[TradeManager.Entities.md#SellCard]] с идентификатором `sellCardUid` поле `shopUid` должно входить в `allowedShopUids` для добавляемой сущности.
+- `quantity` должно быть больше 0.
+- Агрегированная строка с `inventoryPositionUid` должна существовать в контексте персонажа и магазина корзины (иначе `CannotAddInventoryPositionNotFound`).
+- Суммарное количество добавляемых и уже учтённых в [[TradeManager.Entities.md#SellCard]] сущностей того же агрегата не должно превышать `quantity` строки инвентаря (иначе `CannotAddQuantityExceedsInventory`).
+- Предметы агрегата должны быть доступны для продажи.
+- Продажа должна быть разрешена в текущем магазине: у [[TradeManager.Entities.md#SellCard]] с идентификатором `sellCardUid` поле `shopUid` должно входить в `allowedShopUids` для добавляемого агрегата.
 
 **Ошибки / причины отказа**
-- `CannotAddSellEntityNotFound`
-- `CannotAddDuplicateEntityUid`
+- `CannotAddInventoryPositionNotFound`
+- `CannotAddQuantityExceedsInventory`
+- `CannotUseNonPositiveQuantity`
 - `CannotSellEntity`
 - `CannotSellEntityInShop`
 
 **Результат**
-- При успехе возвращает `status = Ok` и `positionUid` (строка [[TradeManager.Entities.md#SellCardPosition]], созданная или обновлённая после учёта сущности).
+- При успехе возвращает `status = Ok` и `positionUid` (строка [[TradeManager.Entities.md#SellCardPosition]], созданная или обновлённая после учёта сущностей).
 - При отказе с `CannotSellEntityInShop` возвращает `allowedShopUids` со списком магазинов, где продажа разрешена.
+
+### changeSellCardPositionQuantity
+
+**Сигнатура**
+changeSellCardPositionQuantity(string sellCardPositionUid, int newQuantity): [[TradeManager.Entities.md#ChangeSellCardPositionQuantityResult]]
+
+**Аргументы**
+- `sellCardPositionUid: string` - идентификатор позиции в корзине продажи.
+- `newQuantity: int` - новое количество для позиции.
+
+**Описание**
+При увеличении TradeManager добирает сущности из того же агрегата инвентаря (`prefabName` позиции), проверяя, что суммарное количество в корзине не превышает `quantity` в инвентаре. При уменьшении снимает лишние сущности из `entityUids` позиции в детерминированном порядке (LIFO — последние добавленные снимаются первыми). `unitPrice` не меняется; после смены `quantity` TradeManager пересчитывает `lineSum` (`unitPrice * newQuantity`).
+
+Полное удаление строки — через [[#removeSellCardPosition]], не через `newQuantity = 0`.
+
+**Проверки**
+- `newQuantity` должно быть больше 0.
+- При увеличении: суммарное `newQuantity` по всем строкам корзины для того же агрегата не должно превышать `quantity` в инвентаре (иначе `CannotAddQuantityExceedsInventory`).
+
+**Ошибки / причины отказа**
+- `CannotUseNonPositiveQuantity`
+- `CannotAddQuantityExceedsInventory`
 
 ### removeSellCardPosition
 
@@ -118,7 +157,7 @@ removeSellCardPosition(string sellCardPositionUid): void
 - `sellCardPositionUid: string` - идентификатор удаляемой строки корзины (`SellCardPosition.uid`).
 
 **Описание**
-Удаляет из корзины **целую агрегированную строку** по её `uid`; частичное снятие одного `entityUid` из строки этим методом не выполняется.
+Удаляет из корзины **целую агрегированную строку** по её `uid`. Частичное изменение количества — через [[#changeSellCardPositionQuantity]].
 
 ### canSellCard
 

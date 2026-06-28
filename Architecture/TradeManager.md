@@ -29,6 +29,7 @@
 - [[TradeManager.Entities.md#RecreateSellCardResult]]
 - [[TradeManager.Entities.md#GetActiveSellCardResult]]
 - [[TradeManager.Entities.md#AddToSellCardResult]]
+- [[TradeManager.Entities.md#ChangeSellCardPositionQuantityResult]]
 - [[TradeManager.Entities.md#CanSellStatus]]
 - [[TradeManager.Entities.md#SellFailReasonEnum]]
 - [[TradeManager.Entities.md#SellResult]]
@@ -40,6 +41,8 @@
 - [[TradeManager.Entities.md#GetShopCategoriesResult]]
 - [[TradeManager.Entities.md#ShopProduct]]
 - [[TradeManager.Entities.md#ShopProductsResult]]
+- [[TradeManager.Entities.md#GetDescriptionByPrefabResult]]
+- [[TradeManager.Entities.md#GetDescriptionByPrefabFailReasonEnum]]
 
 ### Методы покупки
 - [[TradeManager.BuyMethods.md#createBuyCard]]
@@ -58,6 +61,7 @@
 - [[TradeManager.SellMethods.md#getActiveSellCard]]
 - [[TradeManager.SellMethods.md#getInventoryForSell]]
 - [[TradeManager.SellMethods.md#addToSellCard]]
+- [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]]
 - [[TradeManager.SellMethods.md#removeSellCardPosition]]
 - [[TradeManager.SellMethods.md#canSellCard]]
 - [[TradeManager.SellMethods.md#removeSellCard]]
@@ -66,3 +70,4 @@
 ### Методы магазина
 - [[TradeManager.ShopMethods.md#getShopCategories]]
 - [[TradeManager.ShopMethods.md#getProductsForBuyByCharacter]]
+- [[TradeManager.ShopMethods.md#getDescriptionByPrefab]]

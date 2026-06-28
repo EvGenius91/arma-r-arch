@@ -247,7 +247,7 @@
 | `characterUid` | string | Идентификатор персонажа                          |
 | `positions`    | array  | Позиции (`SellCardPosition`); при создании — `[]` |
 
-Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `entityUids` (массив строк), `quantity`, `lineSum` (числа: `quantity`, `lineSum`).
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum` (числа: `quantity`, `unitPrice`, `lineSum`). Поле `entityUids` может присутствовать во внутреннем составе строки, но клиент UI его не использует.
 
 **Пример запроса**
 
@@ -404,8 +404,8 @@
           "uid": "sell-pos-1b2c",
           "name": "AK-74",
           "prefabName": "AK74",
-          "entityUids": ["ent-101", "ent-102"],
           "quantity": 2,
+          "unitPrice": 4000,
           "lineSum": 8000
         }
       ]
@@ -426,5 +426,241 @@
     "card": null
   },
   "id": 5
+}
+```
+
+### getInventoryForSell
+
+Возвращает агрегированный снимок инвентаря персонажа для UI продажи. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#getinventoryforsell), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"getInventoryForSell"`
+
+**`params`**
+
+| Поле                           | Тип    | Описание                                                                                      |
+| ------------------------------ | ------ | --------------------------------------------------------------------------------------------- |
+| `characterUid`                 | string | Идентификатор персонажа                                                                       |
+| `shopUid`                      | string | Идентификатор магазина (контекст цен и правил продажи)                                        |
+| `isExcludeNotAvailableForSell` | bool   | Если `true` — только строки, доступные к продаже в этом магазине; если `false` — все строки   |
+
+**`result` (`GetInventoryForSellResult`)**
+
+| Поле               | Тип            | Описание                                                                                  |
+| ------------------ | -------------- | ----------------------------------------------------------------------------------------- |
+| `status`           | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                               |
+| `failReason`       | string \| null | При `Fail`: `"ShopNotFound"` или `"CharacterNotFound"`; при `Ok` — `null`                 |
+| `inventoryForSell` | object \| null | При `Ok`: объект `InventoryForSell`; при `Fail` — `null`                                |
+
+**`InventoryForSell` (в `result.inventoryForSell`)**
+
+| Поле         | Тип    | Описание                                      |
+| ------------ | ------ | --------------------------------------------- |
+| `positions`  | array  | Агрегированные строки (`InventoryProductPosition`) |
+| `totalAmount`| number | Сумма `lineSum` по всем строкам в `positions` |
+
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `isAvailableForSell`, `sellFailReason` (при `isAvailableForSell = false`), `allowedShopUids` (при `sellFailReason = "CannotSellEntityInShop"`). Числа: `quantity`, `unitPrice`, `lineSum`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getInventoryForSell",
+  "params": {
+    "characterUid": "char-42",
+    "shopUid": "shop-001",
+    "isExcludeNotAvailableForSell": true
+  },
+  "id": 6
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "inventoryForSell": {
+      "positions": [
+        {
+          "uid": "inv-pos-ak74",
+          "name": "AK-74",
+          "prefabName": "AK74",
+          "quantity": 3,
+          "unitPrice": 4000,
+          "lineSum": 12000,
+          "isAvailableForSell": true
+        }
+      ],
+      "totalAmount": 12000
+    }
+  },
+  "id": 6
+}
+```
+
+### addToSellCard
+
+Добавляет в корзину продажи указанное количество из агрегированной строки инвентаря. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#addtosellcard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"addToSellCard"`
+
+**`params`**
+
+| Поле                   | Тип    | Описание                                                              |
+| ---------------------- | ------ | --------------------------------------------------------------------- |
+| `sellCardUid`          | string | Идентификатор корзины продажи                                         |
+| `inventoryPositionUid` | string | `uid` строки из `getInventoryForSell` → `positions`                 |
+| `quantity`             | number | Добавляемое количество (целое, > 0)                                   |
+
+**`result` (`AddToSellCardResult`)**
+
+| Поле              | Тип            | Описание                                                                                                                                 |
+| ----------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`          | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                                                                              |
+| `failReason`      | string \| null | При `Fail`: см. `AddToSellCardFailReasonEnum`; при `Ok` — `null`                                                                         |
+| `positionUid`     | string \| null | При `Ok`: `uid` созданной или обновлённой строки корзины; при `Fail` — `null`                                                            |
+| `allowedShopUids` | array \| null  | При `failReason = "CannotSellEntityInShop"`: список магазинов, где продажа разрешена; иначе — `null` или не используется                 |
+
+Причины отказа (`failReason`): `CannotAddInventoryPositionNotFound`, `CannotAddQuantityExceedsInventory`, `CannotUseNonPositiveQuantity`, `CannotSellEntity`, `CannotSellEntityInShop`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "addToSellCard",
+  "params": {
+    "sellCardUid": "sell-card-3a9f",
+    "inventoryPositionUid": "inv-pos-ak74",
+    "quantity": 2
+  },
+  "id": 7
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "positionUid": "sell-pos-1b2c",
+    "allowedShopUids": null
+  },
+  "id": 7
+}
+```
+
+### changeSellCardPositionQuantity
+
+Изменяет количество в строке корзины продажи. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#changesellcardpositionquantity), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"changeSellCardPositionQuantity"`
+
+**`params`**
+
+| Поле                  | Тип    | Описание                                      |
+| --------------------- | ------ | --------------------------------------------- |
+| `sellCardPositionUid` | string | Идентификатор позиции в корзине продажи       |
+| `newQuantity`         | number | Новое количество (целое, > 0)                 |
+
+**`result` (`ChangeSellCardPositionQuantityResult`)**
+
+| Поле         | Тип            | Описание                                                                                          |
+| ------------ | -------------- | ------------------------------------------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                                       |
+| `failReason` | string \| null | При `Fail`: `"CannotUseNonPositiveQuantity"` или `"CannotAddQuantityExceedsInventory"`; при `Ok` — `null` |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "changeSellCardPositionQuantity",
+  "params": {
+    "sellCardPositionUid": "sell-pos-1b2c",
+    "newQuantity": 1
+  },
+  "id": 8
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null
+  },
+  "id": 8
+}
+```
+
+### getDescriptionByPrefab
+
+Возвращает текстовое описание товара по имени префаба. Подробнее: [Architecture/TradeManager.ShopMethods.md](../Architecture/TradeManager.ShopMethods.md#getdescriptionbyprefab), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"getDescriptionByPrefab"`
+
+**`params`**
+
+| Поле         | Тип    | Описание              |
+| ------------ | ------ | --------------------- |
+| `prefabName` | string | Имя префаба товара    |
+
+**`result` (`GetDescriptionByPrefabResult`)**
+
+| Поле          | Тип            | Описание                                                          |
+| ------------- | -------------- | ----------------------------------------------------------------- |
+| `status`      | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                       |
+| `failReason`  | string \| null | При `Fail`: `"PrefabNotFound"`; при `Ok` — `null`                 |
+| `description` | string \| null | При `Ok`: текст описания; при `Fail` — `null`                     |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getDescriptionByPrefab",
+  "params": {
+    "prefabName": "AK74"
+  },
+  "id": 9
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "description": "Автомат Калашникова образца 1974 года. Стандартное стрелковое оружие."
+  },
+  "id": 9
+}
+```
+
+**Пример ответа — отказ (префаб не найден)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "PrefabNotFound",
+    "description": null
+  },
+  "id": 9
 }
 ```
