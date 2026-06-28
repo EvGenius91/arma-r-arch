@@ -537,9 +537,10 @@
 | `uid`          | string | Идентификатор корзины                            |
 | `shopUid`      | string | Идентификатор магазина                           |
 | `characterUid` | string | Идентификатор персонажа                          |
-| `positions`    | array  | Позиции (`SellCardPosition`); при создании — `[]` |
+| `positions`       | array  | Позиции (`SellCardPosition`); при создании — `[]` |
+| `sellFailReasons` | array  | Причины отказа на уровне корзины (`SellCardFailReasonEnum`); при пустой корзине — `["EmptySellCard"]` |
 
-Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum` (числа: `quantity`, `unitPrice`, `lineSum`). Поле `entityUids` может присутствовать во внутреннем составе строки, но клиент UI его не использует.
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids` (числа: `quantity`, `unitPrice`, `lineSum`; `sellFailReasons` и `allowedShopUids` — массивы строк). Поле `entityUids` может присутствовать во внутреннем составе строки, но клиент UI его не использует.
 
 **Пример запроса**
 
@@ -567,7 +568,8 @@
       "uid": "sell-card-3a9f",
       "shopUid": "shop-001",
       "characterUid": "char-42",
-      "positions": []
+      "positions": [],
+      "sellFailReasons": ["EmptySellCard"]
     }
   },
   "id": 3
@@ -637,7 +639,8 @@
       "uid": "sell-card-c7d1",
       "shopUid": "shop-002",
       "characterUid": "char-42",
-      "positions": []
+      "positions": [],
+      "sellFailReasons": ["EmptySellCard"]
     }
   },
   "id": 4
@@ -698,9 +701,12 @@
           "prefabName": "AK74",
           "quantity": 2,
           "unitPrice": 4000,
-          "lineSum": 8000
+          "lineSum": 8000,
+          "sellFailReasons": [],
+          "allowedShopUids": []
         }
-      ]
+      ],
+      "sellFailReasons": []
     }
   },
   "id": 5
@@ -750,7 +756,7 @@
 | `positions`  | array  | Агрегированные строки (`InventoryProductPosition`) |
 | `totalAmount`| number | Сумма `lineSum` по всем строкам в `positions` |
 
-Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `isAvailableForSell`, `sellFailReason` (при `isAvailableForSell = false`), `allowedShopUids` (при `sellFailReason = "CannotSellEntityInShop"`). Числа: `quantity`, `unitPrice`, `lineSum`.
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `isAvailableForSell`, `sellFailReasons` (при `isAvailableForSell = false`), `allowedShopUids` (при `"CannotSellEntityInShop"` в `sellFailReasons`). Числа: `quantity`, `unitPrice`, `lineSum`.
 
 **Пример запроса**
 
@@ -784,7 +790,8 @@
           "quantity": 3,
           "unitPrice": 4000,
           "lineSum": 12000,
-          "isAvailableForSell": true
+          "isAvailableForSell": true,
+          "sellFailReasons": []
         }
       ],
       "totalAmount": 12000
@@ -807,6 +814,8 @@
 | `sellCardUid`          | string | Идентификатор корзины продажи                                         |
 | `inventoryPositionUid` | string | `uid` строки из `getInventoryForSell` → `positions`                 |
 | `quantity`             | number | Добавляемое количество (целое, > 0)                                   |
+
+После успеха клиент перезапрашивает корзину через `getActiveSellCard`. При превышении инвентаря — отказ целиком, без частичного добавления.
 
 **`result` (`AddToSellCardResult`)**
 
@@ -862,12 +871,16 @@
 | `sellCardPositionUid` | string | Идентификатор позиции в корзине продажи       |
 | `newQuantity`         | number | Новое количество (целое, > 0)                 |
 
+При превышении инвентаря `quantity` откатывается к допустимому значению, возвращается `Fail`. Актуальное состояние — через `getActiveSellCard` после ответа.
+
 **`result` (`ChangeSellCardPositionQuantityResult`)**
 
 | Поле         | Тип            | Описание                                                                                          |
 | ------------ | -------------- | ------------------------------------------------------------------------------------------------- |
 | `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                                       |
-| `failReason` | string \| null | При `Fail`: `"CannotUseNonPositiveQuantity"` или `"CannotAddQuantityExceedsInventory"`; при `Ok` — `null` |
+| `failReason` | string \| null | При `Fail`: см. `ChangeSellCardPositionQuantityFailReasonEnum`; при `Ok` — `null` |
+
+Причины отказа (`failReason`): `CannotUseNonPositiveQuantity`, `QuantityExceedsInventory`, `CannotSellEntity`, `CannotSellEntityInShop`, `CannotSellItemNotOwnedByCharacter`.
 
 **Пример запроса**
 
@@ -893,6 +906,130 @@
     "failReason": null
   },
   "id": 8
+}
+```
+
+**Пример ответа — отказ (превышение инвентаря)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "QuantityExceedsInventory"
+  },
+  "id": 8
+}
+```
+
+### removeSellCardPosition
+
+Удаляет позицию из корзины продажи. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#removesellcardposition).
+
+**`method`:** `"removeSellCardPosition"`
+
+**`params`**
+
+| Поле                  | Тип    | Описание                                |
+| --------------------- | ------ | --------------------------------------- |
+| `sellCardPositionUid` | string | Идентификатор позиции в корзине продажи |
+
+**`result`:** `null`. После вызова клиент перезапрашивает корзину через `getActiveSellCard`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "removeSellCardPosition",
+  "params": {
+    "sellCardPositionUid": "sell-pos-1b2c"
+  },
+  "id": 9
+}
+```
+
+### removeSellCard
+
+Удаляет корзину продажи. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#removesellcard).
+
+**`method`:** `"removeSellCard"`
+
+**`params`**
+
+| Поле          | Тип    | Описание                    |
+| ------------- | ------ | --------------------------- |
+| `sellCardUid` | string | Идентификатор корзины продажи |
+
+**`result`:** `null`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "removeSellCard",
+  "params": {
+    "sellCardUid": "sell-card-3a9f"
+  },
+  "id": 10
+}
+```
+
+### sell
+
+Выполняет продажу всех позиций корзины. Подробнее: [Architecture/TradeManager.SellMethods.md](../Architecture/TradeManager.SellMethods.md#sell), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"sell"`
+
+**`params`**
+
+| Поле          | Тип    | Описание                    |
+| ------------- | ------ | --------------------------- |
+| `sellCardUid` | string | Идентификатор корзины продажи |
+
+Возвращает только статус. При `Fail` клиент перезапрашивает корзину через `getActiveSellCard` для получения причин.
+
+**`result` (`SellResult`)**
+
+| Поле     | Тип    | Описание                                    |
+| -------- | ------ | ------------------------------------------- |
+| `status` | string | `"Ok"` или `"Fail"` (`OperationStatusEnum`) |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "sell",
+  "params": {
+    "sellCardUid": "sell-card-3a9f"
+  },
+  "id": 11
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok"
+  },
+  "id": 11
+}
+```
+
+**Пример ответа — отказ**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail"
+  },
+  "id": 11
 }
 ```
 
