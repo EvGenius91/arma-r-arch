@@ -15,7 +15,7 @@
 
 ### Пересчёт состояния корзины
 
-TradeManager пересчитывает `sellFailReasons` у [[TradeManager.Entities.md#SellCard]] и `sellFailReasons` (и при необходимости `allowedShopUids`) у каждой [[TradeManager.Entities.md#SellCardPosition]] при формировании снимка корзины:
+TradeManager пересчитывает `sellFailReasons`, `totalSum` у [[TradeManager.Entities.md#SellCard]] и `sellFailReasons` (и при необходимости `allowedShopUids`) у каждой [[TradeManager.Entities.md#SellCardPosition]] при формировании снимка корзины:
 
 - [[#getActiveSellCard]]
 - [[#createSellCard]] / [[#recreateSellCard]] (поле `card` в ответе)
@@ -25,7 +25,7 @@ TradeManager пересчитывает `sellFailReasons` у [[TradeManager.Enti
 **Cart-level проверки** (в `SellCard.sellFailReasons`):
 - `EmptySellCard` — если `positions` пуст;
 - `CannotSellCardHasDuplicateEntityUid` — повторяющиеся `entityUid` среди всех позиций;
-- `CannotSellCardPriceNotPositive` — сумма `lineSum` по позициям не положительна.
+- `CannotSellCardPriceNotPositive` — `totalSum` не положителен.
 
 **Position-level проверки** (в `SellCardPosition.sellFailReasons`):
 - владение предметами (`CannotSellItemNotOwnedByCharacter`);
@@ -48,7 +48,7 @@ createSellCard(string shopUid, string characterUid): [[TradeManager.Entities.md#
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. В `card` пересчитаны `sellFailReasons` (для пустой корзины — `EmptySellCard`).
+Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. В `card` пересчитаны `sellFailReasons` (для пустой корзины — `EmptySellCard`), `totalSum = 0`.
 
 **Проверки**
 - У персонажа не должно быть другой активной корзины продажи.
@@ -70,7 +70,7 @@ recreateSellCard(string shopUid, string characterUid): [[TradeManager.Entities.m
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. Если у персонажа уже есть активная корзина продажи, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToSellCard`, `sell` и т.д.); прежний `sellCardUid` после успешного вызова недействителен. В `card` пересчитаны `sellFailReasons` (для пустой корзины — `EmptySellCard`).
+Создаёт [[TradeManager.Entities.md#SellCard]] для персонажа в указанном магазине. Если у персонажа уже есть активная корзина продажи, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToSellCard`, `sell` и т.д.); прежний `sellCardUid` после успешного вызова недействителен. В `card` пересчитаны `sellFailReasons` (для пустой корзины — `EmptySellCard`), `totalSum = 0`.
 
 Для первого создания корзины без сброса существующей используйте [[#createSellCard]].
 
@@ -86,7 +86,7 @@ getActiveSellCard(string characterUid): [[TradeManager.Entities.md#GetActiveSell
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа с пересчитанными `sellFailReasons`. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`) для UI.
+Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа с пересчитанными `sellFailReasons`, `totalSum`. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`) для UI.
 
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `card`.
@@ -225,7 +225,7 @@ sell(string sellCardUid): [[TradeManager.Entities.md#SellResult]]
 - Каждый предмет разрешён к продаже в текущем магазине.
 - Каждый предмет принадлежит персонажу.
 - Среди всех позиций и всех списков `entityUids` нет повторяющихся `entityUid`.
-- Сумма `lineSum` по всем позициям больше 0.
+- Сумма `lineSum` по всем позициям (`totalSum`) больше 0.
 - Position-level: превышение инвентаря и прочие проверки по позициям.
 
 **Результат**

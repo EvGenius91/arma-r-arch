@@ -37,11 +37,12 @@ class BuyCard
 	BuyCardTypeEnum type;
 	BuyCardFailReasonEnum[] buyFailReasons;
 	int moneyShortfall;
+	int totalSum;
 }
 ```
 
 **Назначение**
-Корзина покупки для одного персонажа. Одновременно у персонажа может существовать только одна корзина. Поля `buyFailReasons` и `moneyShortfall` пересчитываются TradeManager при каждом формировании снимка корзины ([[TradeManager.BuyMethods.md#getActiveBuyCard]], [[TradeManager.BuyMethods.md#createBuyCard]], [[TradeManager.BuyMethods.md#recreateBuyCard]], после [[TradeManager.BuyMethods.md#buy]] с `status = Fail`).
+Корзина покупки для одного персонажа. Одновременно у персонажа может существовать только одна корзина. Поля `buyFailReasons`, `moneyShortfall` и `totalSum` пересчитываются TradeManager при каждом формировании снимка корзины ([[TradeManager.BuyMethods.md#getActiveBuyCard]], [[TradeManager.BuyMethods.md#createBuyCard]], [[TradeManager.BuyMethods.md#recreateBuyCard]], после [[TradeManager.BuyMethods.md#buy]] с `status = Fail`).
 
 **Свойства**
 - `uid: string` - уникальный идентификатор корзины.
@@ -51,7 +52,8 @@ class BuyCard
 - `deliveryMethod: DeliveryMethod` - выбранный способ доставки.
 - `type: BuyCardTypeEnum` - тип корзины.
 - `buyFailReasons: BuyCardFailReasonEnum[]` - причины, по которым корзину сейчас нельзя купить (cart-level). Пустой массив означает, что покупка разрешена с точки зрения корзины (`canBuy`). Не гарантирует успех [[TradeManager.BuyMethods.md#buy]] из‑за возможной гонки состояния.
-- `moneyShortfall: int` - на сколько не хватает денег для покупки всей корзины: `max(0, sum(lineSum) − деньги персонажа)`. Заполняется только при наличии `CannotAfford` в `buyFailReasons`; иначе `0`.
+- `moneyShortfall: int` - на сколько не хватает денег для покупки всей корзины: `max(0, totalSum − деньги персонажа)`. Заполняется только при наличии `CannotAfford` в `buyFailReasons`; иначе `0`.
+- `totalSum: int` - сумма `lineSum` по всем позициям в `positions` (включая позиции с непустыми `buyFailReasons`); при пустом `positions` — `0`. Инвариант: `totalSum` равен сумме `lineSum` позиций в том же снимке корзины.
 
 **Инварианты**
 - На персонажа разрешена только одна активная корзина.
@@ -140,7 +142,7 @@ enum BuyCardFailReasonEnum
 Причины отказа в покупке на уровне корзины (`BuyCard.buyFailReasons`). Отдельный enum от [[#BuyCardPositionFailReasonEnum]].
 
 **Значения**
-- `CannotAfford` - у персонажа недостаточно денег для покупки всей корзины (сумма `lineSum` по позициям).
+- `CannotAfford` - у персонажа недостаточно денег для покупки всей корзины (`totalSum` превышает деньги персонажа).
 - `CannotFitInInventory` - у персонажа недостаточно места в инвентаре для всей корзины (не указывается, по какой позиции).
 - `CannotSpawnVehicleNoFreeSlot` - нет свободного слота для спавна техники.
 - `CannotUseDeliveryMethodForBuyCardType` - тип доставки не совместим с типом корзины.
@@ -434,11 +436,12 @@ class SellCard
 	string characterUid;
 	SellCardPosition[] positions;
 	SellCardFailReasonEnum[] sellFailReasons;
+	int totalSum;
 }
 ```
 
 **Назначение**
-Корзина продажи для одного персонажа. Одновременно у персонажа может существовать только одна корзина. Поле `sellFailReasons` пересчитывается TradeManager при каждом формировании снимка корзины ([[TradeManager.SellMethods.md#getActiveSellCard]], [[TradeManager.SellMethods.md#createSellCard]], [[TradeManager.SellMethods.md#recreateSellCard]], после [[TradeManager.SellMethods.md#sell]] с `status = Fail`).
+Корзина продажи для одного персонажа. Одновременно у персонажа может существовать только одна корзина. Поля `sellFailReasons` и `totalSum` пересчитываются TradeManager при каждом формировании снимка корзины ([[TradeManager.SellMethods.md#getActiveSellCard]], [[TradeManager.SellMethods.md#createSellCard]], [[TradeManager.SellMethods.md#recreateSellCard]], после [[TradeManager.SellMethods.md#sell]] с `status = Fail`).
 
 **Свойства**
 - `uid: string` - уникальный идентификатор корзины.
@@ -446,6 +449,7 @@ class SellCard
 - `characterUid: string` - идентификатор персонажа.
 - `positions: SellCardPosition[]` - позиции товаров на продажу.
 - `sellFailReasons: SellCardFailReasonEnum[]` - причины, по которым корзину сейчас нельзя продать (cart-level). Пустой массив означает, что продажа разрешена с точки зрения корзины (`canSell`). Не гарантирует успех [[TradeManager.SellMethods.md#sell]] из‑за возможной гонки состояния.
+- `totalSum: int` - сумма `lineSum` по всем позициям в `positions` (включая позиции с непустыми `sellFailReasons`); при пустом `positions` — `0`. Инвариант: `totalSum` равен сумме `lineSum` позиций в том же снимке корзины.
 
 **Инварианты**
 - На персонажа разрешена только одна активная корзина продажи.
@@ -510,7 +514,7 @@ enum SellCardFailReasonEnum
 
 **Значения**
 - `CannotSellCardHasDuplicateEntityUid` - в корзине обнаружены повторяющиеся `entityUid` среди всех позиций и всех списков `entityUids`.
-- `CannotSellCardPriceNotPositive` - итоговая сумма продажи недопустима (сумма `lineSum` по позициям не положительна).
+- `CannotSellCardPriceNotPositive` - итоговая сумма продажи недопустима (`totalSum` не положителен).
 - `EmptySellCard` - в корзине нет позиций.
 - `ErrorInPosition` - производная причина: нативных cart-level причин нет, но хотя бы у одной [[#SellCardPosition]] `sellFailReasons` не пуст. Детали — в `sellFailReasons` позиций.
 

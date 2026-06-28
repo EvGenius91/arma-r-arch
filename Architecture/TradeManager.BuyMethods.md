@@ -5,7 +5,7 @@
 
 ### Пересчёт состояния корзины
 
-TradeManager пересчитывает `buyFailReasons`, `moneyShortfall` у [[TradeManager.Entities.md#BuyCard]] и `buyFailReasons` у каждой [[TradeManager.Entities.md#BuyCardPosition]] при формировании снимка корзины:
+TradeManager пересчитывает `buyFailReasons`, `moneyShortfall`, `totalSum` у [[TradeManager.Entities.md#BuyCard]] и `buyFailReasons` у каждой [[TradeManager.Entities.md#BuyCardPosition]] при формировании снимка корзины:
 
 - [[#getActiveBuyCard]]
 - [[#createBuyCard]] / [[#recreateBuyCard]] (поле `card` в ответе)
@@ -15,7 +15,7 @@ TradeManager пересчитывает `buyFailReasons`, `moneyShortfall` у [[
 **Cart-level проверки** (в `BuyCard.buyFailReasons`):
 - совместимость `BuyCardTypeEnum` и `DeliveryMethod`;
 - `EmptyBuyCard` — если `positions` пуст;
-- `CannotAfford` — сумма `lineSum` по позициям превышает деньги персонажа; при этом `moneyShortfall = max(0, sum(lineSum) − деньги персонажа)`, иначе `moneyShortfall = 0`;
+- `CannotAfford` — `totalSum` превышает деньги персонажа; при этом `moneyShortfall = max(0, totalSum − деньги персонажа)`, иначе `moneyShortfall = 0`;
 - `CannotFitInInventory` — для `DeliveryMethod.Inventory`: недостаточно места в инвентаре для всей корзины (без указания позиции);
 - `CannotSpawnVehicleNoFreeSlot` — для `DeliveryMethod.NearVehicleSpawnPosition`: нет свободного слота спавна техники.
 
@@ -41,7 +41,7 @@ createBuyCard(string shopUid, string characterUid, [[TradeManager.Entities.md#Bu
 - `deliveryMethod: DeliveryMethod` - метод доставки для корзины.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#BuyCard]] для персонажа в указанном магазине с выбранным типом и методом доставки. В `card` пересчитаны `buyFailReasons` (для пустой корзины — `EmptyBuyCard`), `moneyShortfall = 0`.
+Создаёт [[TradeManager.Entities.md#BuyCard]] для персонажа в указанном магазине с выбранным типом и методом доставки. В `card` пересчитаны `buyFailReasons` (для пустой корзины — `EmptyBuyCard`), `moneyShortfall = 0`, `totalSum = 0`.
 
 **Проверки**
 - У персонажа не должно быть другой активной корзины покупки.
@@ -67,7 +67,7 @@ recreateBuyCard(string shopUid, string characterUid, [[TradeManager.Entities.md#
 - `deliveryMethod: DeliveryMethod` - метод доставки для корзины.
 
 **Описание**
-Создаёт [[TradeManager.Entities.md#BuyCard]] для персонажа в указанном магазине с выбранным типом и методом доставки. Если у персонажа уже есть активная корзина покупки, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToBuyCard`, `buy` и т.д.); прежний `buyCardUid` после успешного вызова недействителен. В `card` пересчитаны `buyFailReasons` (для пустой корзины — `EmptyBuyCard`), `moneyShortfall = 0`.
+Создаёт [[TradeManager.Entities.md#BuyCard]] для персонажа в указанном магазине с выбранным типом и методом доставки. Если у персонажа уже есть активная корзина покупки, она удаляется вместе со всеми позициями; возвращается **новая** корзина с новым `uid` и пустым `positions`. Клиент обязан использовать `card.uid` из ответа для последующих вызовов (`addToBuyCard`, `buy` и т.д.); прежний `buyCardUid` после успешного вызова недействителен. В `card` пересчитаны `buyFailReasons` (для пустой корзины — `EmptyBuyCard`), `moneyShortfall = 0`, `totalSum = 0`.
 
 Для первого создания корзины без сброса существующей используйте [[#createBuyCard]].
 
@@ -90,7 +90,7 @@ getActiveBuyCard(string characterUid): [[TradeManager.Entities.md#GetActiveBuyCa
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Возвращает текущую активную [[TradeManager.Entities.md#BuyCard]] персонажа с пересчитанными `buyFailReasons`, `moneyShortfall`. В `card.positions` — позиции [[TradeManager.Entities.md#BuyCardPosition]] (`uid`, `shopProductUid`, `name`, `prefabName`, `quantity`, `lineSum`, `buyFailReasons`) для UI.
+Возвращает текущую активную [[TradeManager.Entities.md#BuyCard]] персонажа с пересчитанными `buyFailReasons`, `moneyShortfall`, `totalSum`. В `card.positions` — позиции [[TradeManager.Entities.md#BuyCardPosition]] (`uid`, `shopProductUid`, `name`, `prefabName`, `quantity`, `lineSum`, `buyFailReasons`) для UI.
 
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `card`.
@@ -195,7 +195,7 @@ buy(string buyCardUid): [[TradeManager.Entities.md#BuyStatus]]
 
 **Проверки**
 - Совместимость `BuyCardTypeEnum` и `DeliveryMethod`.
-- Наличие достаточного количества денег: сумма к оплате = сумма `lineSum` по всем позициям корзины.
+- Наличие достаточного количества денег: сумма к оплате = `totalSum` корзины.
 - Для `DeliveryMethod.Inventory` - наличие свободного места в инвентаре.
 - Для `DeliveryMethod.NearVehicleSpawnPosition` - наличие свободного слота спавна техники.
 - Position-level: остаток на складе, доступность предложений по каждой позиции.

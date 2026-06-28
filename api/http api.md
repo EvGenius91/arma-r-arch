@@ -56,6 +56,7 @@
 | `type`           | string | Тип корзины                                           |
 | `buyFailReasons` | array  | Причины отказа на уровне корзины (`BuyCardFailReasonEnum`); при пустой корзине — `["EmptyBuyCard"]` |
 | `moneyShortfall` | number | Недостающая сумма при `CannotAfford`; иначе `0`       |
+| `totalSum`       | number | Сумма `lineSum` по всем позициям; при пустой корзине — `0` |
 
 Элемент `positions`: объекты с полями `uid`, `shopProductUid`, `name`, `prefabName`, `quantity`, `lineSum`, `buyFailReasons` (числа: `quantity`, `lineSum`; `buyFailReasons` — массив строк `BuyCardPositionFailReasonEnum`).
 
@@ -105,7 +106,8 @@
       "deliveryMethod": "Inventory",
       "type": "Inventory",
       "buyFailReasons": ["EmptyBuyCard"],
-      "moneyShortfall": 0
+      "moneyShortfall": 0,
+      "totalSum": 0
     }
   },
   "id": 1
@@ -201,7 +203,8 @@
       "deliveryMethod": "NearVehicleSpawnPosition",
       "type": "Vehicle",
       "buyFailReasons": ["EmptyBuyCard"],
-      "moneyShortfall": 0
+      "moneyShortfall": 0,
+      "totalSum": 0
     }
   },
   "id": 2
@@ -224,7 +227,7 @@
 
 ### getActiveBuyCard
 
-Возвращает активную корзину покупки персонажа с пересчитанными `buyFailReasons` и `moneyShortfall`. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#getactivebuycard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+Возвращает активную корзину покупки персонажа с пересчитанными `buyFailReasons`, `moneyShortfall` и `totalSum`. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#getactivebuycard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
 
 **`method`:** `"getActiveBuyCard"`
 
@@ -283,7 +286,8 @@
       "deliveryMethod": "Inventory",
       "type": "Inventory",
       "buyFailReasons": [],
-      "moneyShortfall": 0
+      "moneyShortfall": 0,
+      "totalSum": 15000
     }
   },
   "id": 3
@@ -539,6 +543,7 @@
 | `characterUid` | string | Идентификатор персонажа                          |
 | `positions`       | array  | Позиции (`SellCardPosition`); при создании — `[]` |
 | `sellFailReasons` | array  | Причины отказа на уровне корзины (`SellCardFailReasonEnum`); при пустой корзине — `["EmptySellCard"]` |
+| `totalSum`        | number | Сумма `lineSum` по всем позициям; при пустой корзине — `0` |
 
 Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids` (числа: `quantity`, `unitPrice`, `lineSum`; `sellFailReasons` и `allowedShopUids` — массивы строк). Поле `entityUids` может присутствовать во внутреннем составе строки, но клиент UI его не использует.
 
@@ -569,7 +574,8 @@
       "shopUid": "shop-001",
       "characterUid": "char-42",
       "positions": [],
-      "sellFailReasons": ["EmptySellCard"]
+      "sellFailReasons": ["EmptySellCard"],
+      "totalSum": 0
     }
   },
   "id": 3
@@ -640,7 +646,8 @@
       "shopUid": "shop-002",
       "characterUid": "char-42",
       "positions": [],
-      "sellFailReasons": ["EmptySellCard"]
+      "sellFailReasons": ["EmptySellCard"],
+      "totalSum": 0
     }
   },
   "id": 4
@@ -706,7 +713,8 @@
           "allowedShopUids": []
         }
       ],
-      "sellFailReasons": []
+      "sellFailReasons": [],
+      "totalSum": 8000
     }
   },
   "id": 5
