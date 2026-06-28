@@ -21,7 +21,7 @@ enum OperationStatusEnum
 - `Fail` - операция отклонена.
 
 **Используется в**
-[[#AddToBuyCardResult]], [[#ChangeBuyCardPositionQuantityResult]], [[#BuyStatus]], [[#CanBuyStatus]], [[#CreateBuyCardResult]], [[#RecreateBuyCardResult]], [[#GetActiveBuyCardResult]], [[#CreateSellCardResult]], [[#RecreateSellCardResult]], [[#GetActiveSellCardResult]], [[#AddToSellCardResult]], [[#ChangeSellCardPositionQuantityResult]], [[#CanSellStatus]], [[#SellResult]], [[#GetShopCategoriesResult]], [[#ShopProductsResult]], [[#GetDescriptionByPrefabResult]], [[#GetInventoryForSellResult]]
+[[#AddToBuyCardResult]], [[#ChangeBuyCardPositionQuantityResult]], [[#BuyStatus]], [[#CreateBuyCardResult]], [[#RecreateBuyCardResult]], [[#GetActiveBuyCardResult]], [[#CreateSellCardResult]], [[#RecreateSellCardResult]], [[#GetActiveSellCardResult]], [[#AddToSellCardResult]], [[#ChangeSellCardPositionQuantityResult]], [[#CanSellStatus]], [[#SellResult]], [[#GetShopCategoriesResult]], [[#ShopProductsResult]], [[#GetDescriptionByPrefabResult]], [[#GetInventoryForSellResult]]
 
 ### BuyCard
 
@@ -35,11 +35,13 @@ class BuyCard
 	BuyCardPosition[] positions;
 	DeliveryMethod deliveryMethod;
 	BuyCardTypeEnum type;
+	BuyCardFailReasonEnum[] buyFailReasons;
+	int moneyShortfall;
 }
 ```
 
 **Назначение**
-Корзина покупки для одного персонажа. Одновременно у персонажа может существовать только одна корзина.
+Корзина покупки для одного персонажа. Одновременно у персонажа может существовать только одна корзина. Поля `buyFailReasons` и `moneyShortfall` пересчитываются TradeManager при каждом формировании снимка корзины ([[TradeManager.BuyMethods.md#getActiveBuyCard]], [[TradeManager.BuyMethods.md#createBuyCard]], [[TradeManager.BuyMethods.md#recreateBuyCard]], после [[TradeManager.BuyMethods.md#buy]] с `status = Fail`).
 
 **Свойства**
 - `uid: string` - уникальный идентификатор корзины.
@@ -48,14 +50,19 @@ class BuyCard
 - `positions: BuyCardPosition[]` - позиции товаров в корзине.
 - `deliveryMethod: DeliveryMethod` - выбранный способ доставки.
 - `type: BuyCardTypeEnum` - тип корзины.
+- `buyFailReasons: BuyCardFailReasonEnum[]` - причины, по которым корзину сейчас нельзя купить (cart-level). Пустой массив означает, что покупка разрешена с точки зрения корзины (`canBuy`). Не гарантирует успех [[TradeManager.BuyMethods.md#buy]] из‑за возможной гонки состояния.
+- `moneyShortfall: int` - на сколько не хватает денег для покупки всей корзины: `max(0, sum(lineSum) − деньги персонажа)`. Заполняется только при наличии `CannotAfford` в `buyFailReasons`; иначе `0`.
 
 **Инварианты**
 - На персонажа разрешена только одна активная корзина.
 - `deliveryMethod` должен быть совместим с `type`.
 - Среди позиций в `positions` значение `shopProductUid` не повторяется: для одного предложения каталога одна строка корзины, повторное добавление увеличивает её `quantity`.
+- `canBuy ⟺ buyFailReasons` пуст (клиентская семантика кнопки «Купить»).
+- `ErrorInPosition` в `buyFailReasons` добавляется производно: если нет нативных cart-level причин, но хотя бы у одной позиции `buyFailReasons` не пуст (см. [[#BuyCardFailReasonEnum]]).
+- При пустом `positions` в `buyFailReasons` включается `EmptyBuyCard`.
 
 **Связано**
-[[#BuyCardPosition]], [[#DeliveryMethod]], [[#BuyCardTypeEnum]], [[#GetActiveBuyCardResult]]
+[[#BuyCardPosition]], [[#DeliveryMethod]], [[#BuyCardTypeEnum]], [[#BuyCardFailReasonEnum]], [[#GetActiveBuyCardResult]]
 
 ### BuyCardTypeEnum
 
@@ -90,6 +97,7 @@ class BuyCardPosition
 	string prefabName;
 	int quantity;
 	int lineSum;
+	BuyCardPositionFailReasonEnum[] buyFailReasons;
 }
 ```
 
@@ -103,6 +111,7 @@ class BuyCardPosition
 - `prefabName: string` - имя префаба товара (для логики доставки/спавна; согласовано с предложением по `shopProductUid`).
 - `quantity: int` - количество товара в позиции.
 - `lineSum: int` - сумма по строке корзины покупки с учётом `quantity` (те же денежные единицы, что у [[#ShopProduct]] `unitPrice` и поле `lineSum` у [[#SellCardPosition]]); рассчитывается TradeManager при формировании и обновлении позиции.
+- `buyFailReasons: BuyCardPositionFailReasonEnum[]` - причины, по которым эту позицию сейчас нельзя купить (position-level: остаток на складе, доступность предложения и т.п.). Деньги и место в инвентаре сюда не входят — только в `buyFailReasons` у [[#BuyCard]].
 
 **Инварианты**
 - `quantity` должно быть больше 0.
@@ -110,7 +119,61 @@ class BuyCardPosition
 - При `quantity > 0` ожидается `lineSum >= 0`; при нулевой или отрицательной цене предложения — по правилам проекта (обычно такие товары не попадают в корзину через [[TradeManager.BuyMethods.md#addToBuyCard]]).
 
 **Используется в**
+[[#BuyCard]], [[#BuyCardPositionFailReasonEnum]]
+
+### BuyCardFailReasonEnum
+
+**Сигнатура**
+```
+enum BuyCardFailReasonEnum
+{
+	case CannotAfford;
+	case CannotFitInInventory;
+	case CannotSpawnVehicleNoFreeSlot;
+	case CannotUseDeliveryMethodForBuyCardType;
+	case EmptyBuyCard;
+	case ErrorInPosition;
+}
+```
+
+**Назначение**
+Причины отказа в покупке на уровне корзины (`BuyCard.buyFailReasons`). Отдельный enum от [[#BuyCardPositionFailReasonEnum]].
+
+**Значения**
+- `CannotAfford` - у персонажа недостаточно денег для покупки всей корзины (сумма `lineSum` по позициям).
+- `CannotFitInInventory` - у персонажа недостаточно места в инвентаре для всей корзины (не указывается, по какой позиции).
+- `CannotSpawnVehicleNoFreeSlot` - нет свободного слота для спавна техники.
+- `CannotUseDeliveryMethodForBuyCardType` - тип доставки не совместим с типом корзины.
+- `EmptyBuyCard` - в корзине нет позиций.
+- `ErrorInPosition` - производная причина: нативных cart-level причин нет, но хотя бы у одной [[#BuyCardPosition]] `buyFailReasons` не пуст. Детали — в `buyFailReasons` позиций.
+
+**Используется в**
 [[#BuyCard]]
+
+### BuyCardPositionFailReasonEnum
+
+**Сигнатура**
+```
+enum BuyCardPositionFailReasonEnum
+{
+	case InsufficientStock;
+	case ShopProductNotAvailableForBuy;
+	case ShopProductNotFound;
+	case ShopProductNotInShop;
+}
+```
+
+**Назначение**
+Причины отказа в покупке на уровне одной позиции (`BuyCardPosition.buyFailReasons`).
+
+**Значения**
+- `InsufficientStock` - запрошенное `quantity` превышает `availableQuantity` предложения ([[#ShopProduct]]).
+- `ShopProductNotAvailableForBuy` - предложение недоступно к покупке (`isAvailableForBuy = false` и т.п.).
+- `ShopProductNotFound` - предложение с `shopProductUid` не найдено в каталоге TradeManager.
+- `ShopProductNotInShop` - предложение не относится к магазину корзины (`BuyCard.shopUid`).
+
+**Используется в**
+[[#BuyCardPosition]], [[#ChangeBuyCardPositionQuantityFailReasonEnum]]
 
 ### DeliveryMethod
 
@@ -135,7 +198,7 @@ enum DeliveryMethod
 - Для [[#BuyCardTypeEnum]] = `Vehicle` допустим только `DeliveryMethod.NearVehicleSpawnPosition`.
 
 **Используется в**
-[[#BuyCard]], [[#CreateBuyCardFailReasonEnum]], [[#BuyFailReasonEnum]], [[#CanBuyFailReasonEnum]]
+[[#BuyCard]], [[#CreateBuyCardFailReasonEnum]], [[#BuyCardFailReasonEnum]]
 
 ### AddToBuyCardResult
 
@@ -203,14 +266,22 @@ class ChangeBuyCardPositionQuantityResult
 enum ChangeBuyCardPositionQuantityFailReasonEnum
 {
 	case CannotUseNonPositiveQuantity;
+	case InsufficientStock;
+	case ShopProductNotAvailableForBuy;
+	case ShopProductNotFound;
+	case ShopProductNotInShop;
 }
 ```
 
 **Назначение**
-Причины отказа при изменении количества позиции корзины покупки.
+Причины отказа при изменении количества позиции корзины покупки. Значения `InsufficientStock`, `ShopProductNotAvailableForBuy`, `ShopProductNotFound`, `ShopProductNotInShop` согласованы по смыслу с [[#BuyCardPositionFailReasonEnum]].
 
 **Значения**
 - `CannotUseNonPositiveQuantity` - новое количество должно быть больше 0.
+- `InsufficientStock` - запрошенное `newQuantity` превышает доступный остаток; `quantity` откатывается к максимально допустимому.
+- `ShopProductNotAvailableForBuy` - предложение недоступно к покупке.
+- `ShopProductNotFound` - предложение не найдено в каталоге.
+- `ShopProductNotInShop` - предложение не относится к магазину корзины.
 
 **Используется в**
 [[#ChangeBuyCardPositionQuantityResult]]
@@ -222,86 +293,17 @@ enum ChangeBuyCardPositionQuantityFailReasonEnum
 class BuyStatus
 {
 	OperationStatusEnum status;
-	BuyFailReasonEnum failReason;
 }
 ```
 
 **Назначение**
-Результат выполнения метода [[TradeManager.BuyMethods.md#buy]].
+Результат выполнения метода [[TradeManager.BuyMethods.md#buy]]. При `status = Fail` причины отказа не возвращаются — клиент перезапрашивает корзину через [[TradeManager.BuyMethods.md#getActiveBuyCard]].
 
 **Свойства**
 - `status: OperationStatusEnum` - итог операции покупки.
-- `failReason: BuyFailReasonEnum` - причина при `status = Fail`.
 
 **Связано**
-[[#OperationStatusEnum]], [[#BuyFailReasonEnum]]
-
-### BuyFailReasonEnum
-
-**Сигнатура**
-```
-enum BuyFailReasonEnum
-{
-	case CannotAfford;
-	case CannotFitInInventory;
-	case CannotSpawnVehicleNoFreeSlot;
-	case CannotUseDeliveryMethodForBuyCardType;
-}
-```
-
-**Назначение**
-Причины отказа в покупке.
-
-**Значения**
-- `CannotAfford` - у персонажа недостаточно денег.
-- `CannotFitInInventory` - у персонажа недостаточно места в инвентаре.
-- `CannotSpawnVehicleNoFreeSlot` - нет свободного слота для спавна техники.
-- `CannotUseDeliveryMethodForBuyCardType` - тип доставки не совместим с типом корзины.
-
-**Используется в**
-[[#BuyStatus]]
-
-### CanBuyStatus
-
-**Сигнатура**
-```
-class CanBuyStatus
-{
-	OperationStatusEnum status;
-	CanBuyFailReasonEnum reason;
-}
-```
-
-**Назначение**
-Результат выполнения метода [[TradeManager.BuyMethods.md#canBuyCard]].
-
-**Связано**
-[[#OperationStatusEnum]], [[#CanBuyFailReasonEnum]]
-
-### CanBuyFailReasonEnum
-
-**Сигнатура**
-```
-enum CanBuyFailReasonEnum
-{
-	case CannotAfford;
-	case CannotFitInInventory;
-	case CannotSpawnVehicleNoFreeSlot;
-	case CannotUseDeliveryMethodForBuyCardType;
-}
-```
-
-**Назначение**
-Причины, по которым корзину сейчас нельзя купить.
-
-**Значения**
-- `CannotAfford` - у персонажа недостаточно денег.
-- `CannotFitInInventory` - у персонажа недостаточно места в инвентаре.
-- `CannotSpawnVehicleNoFreeSlot` - нет свободного слота для спавна техники.
-- `CannotUseDeliveryMethodForBuyCardType` - тип доставки не совместим с типом корзины.
-
-**Используется в**
-[[#CanBuyStatus]]
+[[#OperationStatusEnum]]
 
 ### CreateBuyCardResult
 

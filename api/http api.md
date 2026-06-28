@@ -54,8 +54,10 @@
 | `positions`      | array  | Позиции (`BuyCardPosition`); при создании — `[]`      |
 | `deliveryMethod` | string | Способ доставки                                       |
 | `type`           | string | Тип корзины                                           |
+| `buyFailReasons` | array  | Причины отказа на уровне корзины (`BuyCardFailReasonEnum`); при пустой корзине — `["EmptyBuyCard"]` |
+| `moneyShortfall` | number | Недостающая сумма при `CannotAfford`; иначе `0`       |
 
-Элемент `positions`: объекты с полями `uid`, `shopProductUid`, `name`, `prefabName`, `quantity`, `lineSum` (числа: `quantity`, `lineSum`).
+Элемент `positions`: объекты с полями `uid`, `shopProductUid`, `name`, `prefabName`, `quantity`, `lineSum`, `buyFailReasons` (числа: `quantity`, `lineSum`; `buyFailReasons` — массив строк `BuyCardPositionFailReasonEnum`).
 
 Пример элемента `positions` (непустая корзина):
 
@@ -66,7 +68,8 @@
   "name": "AK-74",
   "prefabName": "AK74",
   "quantity": 3,
-  "lineSum": 15000
+  "lineSum": 15000,
+  "buyFailReasons": []
 }
 ```
 
@@ -100,7 +103,9 @@
       "characterUid": "char-42",
       "positions": [],
       "deliveryMethod": "Inventory",
-      "type": "Inventory"
+      "type": "Inventory",
+      "buyFailReasons": ["EmptyBuyCard"],
+      "moneyShortfall": 0
     }
   },
   "id": 1
@@ -194,7 +199,9 @@
       "characterUid": "char-42",
       "positions": [],
       "deliveryMethod": "NearVehicleSpawnPosition",
-      "type": "Vehicle"
+      "type": "Vehicle",
+      "buyFailReasons": ["EmptyBuyCard"],
+      "moneyShortfall": 0
     }
   },
   "id": 2
@@ -212,6 +219,291 @@
     "card": null
   },
   "id": 2
+}
+```
+
+### getActiveBuyCard
+
+Возвращает активную корзину покупки персонажа с пересчитанными `buyFailReasons` и `moneyShortfall`. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#getactivebuycard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"getActiveBuyCard"`
+
+**`params`**
+
+| Поле           | Тип    | Описание                |
+| -------------- | ------ | ----------------------- |
+| `characterUid` | string | Идентификатор персонажа |
+
+**`result` (`GetActiveBuyCardResult`)**
+
+| Поле         | Тип            | Описание                                                              |
+| ------------ | -------------- | --------------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                           |
+| `failReason` | string \| null | При `Fail`: `"NoActiveBuyCard"`; при `Ok` — `null`                    |
+| `card`       | object \| null | При `Ok`: объект `BuyCard`; при `Fail` — `null`                       |
+
+Структура `BuyCard` в `result.card` — как у [createBuyCard](#createbuycard).
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getActiveBuyCard",
+  "params": {
+    "characterUid": "char-42"
+  },
+  "id": 3
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "card": {
+      "uid": "buy-card-9f3a",
+      "shopUid": "shop-001",
+      "characterUid": "char-42",
+      "positions": [
+        {
+          "uid": "buy-pos-7c2a",
+          "shopProductUid": "prod-ak74",
+          "name": "AK-74",
+          "prefabName": "AK74",
+          "quantity": 3,
+          "lineSum": 15000,
+          "buyFailReasons": []
+        }
+      ],
+      "deliveryMethod": "Inventory",
+      "type": "Inventory",
+      "buyFailReasons": [],
+      "moneyShortfall": 0
+    }
+  },
+  "id": 3
+}
+```
+
+### addToBuyCard
+
+Добавляет товар в корзину покупки. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#addtobuycard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"addToBuyCard"`
+
+**`params`**
+
+| Поле             | Тип    | Описание                                      |
+| ---------------- | ------ | --------------------------------------------- |
+| `buyCardUid`     | string | Идентификатор корзины покупки                 |
+| `shopProductUid` | string | `uid` предложения из каталога магазина        |
+| `quantity`       | number | Добавляемое количество (целое, > 0)           |
+
+После успеха клиент перезапрашивает корзину через `getActiveBuyCard`. При нехватке на складе — отказ целиком, без частичного добавления.
+
+**`result` (`AddToBuyCardResult`)**
+
+| Поле          | Тип            | Описание                                                                                   |
+| ------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| `status`      | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                               |
+| `failReason`  | string \| null | При `Fail`: см. `AddToBuyCardFailReasonEnum`; при `Ok` — `null`                            |
+| `positionUid` | string \| null | При `Ok`: `uid` созданной или обновлённой позиции; при `Fail` — `null`                   |
+
+Причины отказа (`failReason`): `CannotAddShopProductNotFound`, `CannotAddShopProductNotInShop`, `CannotAddShopProductNotAvailableForBuy`, `CannotAddIncompatibleBuyCardType`, `CannotUseNonPositiveQuantity`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "addToBuyCard",
+  "params": {
+    "buyCardUid": "buy-card-9f3a",
+    "shopProductUid": "prod-ak74",
+    "quantity": 2
+  },
+  "id": 4
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "positionUid": "buy-pos-7c2a"
+  },
+  "id": 4
+}
+```
+
+### changeBuyCardPositionQuantity
+
+Изменяет количество в позиции корзины покупки. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#changebuycardpositionquantity), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"changeBuyCardPositionQuantity"`
+
+**`params`**
+
+| Поле                 | Тип    | Описание                                |
+| -------------------- | ------ | --------------------------------------- |
+| `buyCardPositionUid` | string | Идентификатор позиции в корзине покупки |
+| `newQuantity`        | number | Новое количество (целое, > 0)           |
+
+При превышении остатка на складе `quantity` откатывается к допустимому значению, возвращается `Fail`. Актуальное состояние — через `getActiveBuyCard` после ответа.
+
+**`result` (`ChangeBuyCardPositionQuantityResult`)**
+
+| Поле         | Тип            | Описание                                                                                                                                 |
+| ------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                                                                              |
+| `failReason` | string \| null | При `Fail`: см. `ChangeBuyCardPositionQuantityFailReasonEnum`; при `Ok` — `null`                                                         |
+
+Причины отказа (`failReason`): `CannotUseNonPositiveQuantity`, `InsufficientStock`, `ShopProductNotAvailableForBuy`, `ShopProductNotFound`, `ShopProductNotInShop`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "changeBuyCardPositionQuantity",
+  "params": {
+    "buyCardPositionUid": "buy-pos-7c2a",
+    "newQuantity": 10
+  },
+  "id": 5
+}
+```
+
+**Пример ответа — отказ (недостаточно на складе)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "InsufficientStock"
+  },
+  "id": 5
+}
+```
+
+### removeBuyCardPosition
+
+Удаляет позицию из корзины покупки. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#removebuycardposition).
+
+**`method`:** `"removeBuyCardPosition"`
+
+**`params`**
+
+| Поле                 | Тип    | Описание                                |
+| -------------------- | ------ | --------------------------------------- |
+| `buyCardPositionUid` | string | Идентификатор позиции в корзине покупки |
+
+**`result`:** `null`. После вызова клиент перезапрашивает корзину через `getActiveBuyCard`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "removeBuyCardPosition",
+  "params": {
+    "buyCardPositionUid": "buy-pos-7c2a"
+  },
+  "id": 6
+}
+```
+
+### removeBuyCard
+
+Удаляет корзину покупки. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#removebuycard).
+
+**`method`:** `"removeBuyCard"`
+
+**`params`**
+
+| Поле         | Тип    | Описание                      |
+| ------------ | ------ | ----------------------------- |
+| `buyCardUid` | string | Идентификатор корзины покупки |
+
+**`result`:** `null`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "removeBuyCard",
+  "params": {
+    "buyCardUid": "buy-card-9f3a"
+  },
+  "id": 7
+}
+```
+
+### buy
+
+Выполняет покупку. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#buy), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"buy"`
+
+**`params`**
+
+| Поле         | Тип    | Описание                      |
+| ------------ | ------ | ----------------------------- |
+| `buyCardUid` | string | Идентификатор корзины покупки |
+
+Возвращает только статус. При `Fail` клиент перезапрашивает корзину через `getActiveBuyCard` для получения причин.
+
+**`result` (`BuyStatus`)**
+
+| Поле     | Тип    | Описание                                    |
+| -------- | ------ | ------------------------------------------- |
+| `status` | string | `"Ok"` или `"Fail"` (`OperationStatusEnum`) |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "buy",
+  "params": {
+    "buyCardUid": "buy-card-9f3a"
+  },
+  "id": 8
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok"
+  },
+  "id": 8
+}
+```
+
+**Пример ответа — отказ**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail"
+  },
+  "id": 8
 }
 ```
 
