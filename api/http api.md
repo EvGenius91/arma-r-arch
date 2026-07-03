@@ -316,9 +316,9 @@
 | ------------- | -------------- | ------------------------------------------------------------------------------------------ |
 | `status`      | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                               |
 | `failReason`  | string \| null | При `Fail`: см. `AddToBuyCardFailReasonEnum`; при `Ok` — `null`                            |
-| `positionUid` | string \| null | При `Ok`: `uid` созданной или обновлённой позиции; при `Fail` — `null`                   |
+| `positionUid` | string \| null | При `Ok`: `uid` созданной позиции; при `Fail` — `null`                   |
 
-Причины отказа (`failReason`): `CannotAddShopProductNotFound`, `CannotAddShopProductNotInShop`, `CannotAddShopProductNotAvailableForBuy`, `CannotAddIncompatibleBuyCardType`, `CannotUseNonPositiveQuantity`.
+Причины отказа (`failReason`): `CannotAddShopProductNotFound`, `CannotAddShopProductNotInShop`, `CannotAddShopProductNotAvailableForBuy`, `CannotAddShopProductAlreadyInBuyCard`, `CannotAddIncompatibleBuyCardType`, `CannotUseNonPositiveQuantity`.
 
 **Пример запроса**
 

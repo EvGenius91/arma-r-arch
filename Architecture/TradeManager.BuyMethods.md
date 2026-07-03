@@ -110,7 +110,7 @@ addToBuyCard(string buyCardUid, string shopProductUid, int quantity): [[TradeMan
 - `quantity: int` - добавляемое количество.
 
 **Описание**
-При успехе создаётся новая [[TradeManager.Entities.md#BuyCardPosition]] или увеличивается `quantity` уже существующей позиции с тем же `shopProductUid` (в одной корзине не более одной позиции на uid предложения). TradeManager заполняет `name` и `prefabName` из предложения и пересчитывает `lineSum` по актуальной цене предложения и итоговому `quantity`. После успеха клиент обязан вызвать [[#getActiveBuyCard]] для актуальных `buyFailReasons` и `moneyShortfall`.
+При успехе создаётся новая [[TradeManager.Entities.md#BuyCardPosition]] с указанным `quantity`. В одной корзине не более одной позиции на `shopProductUid`; повторный вызов с тем же `shopProductUid` отклоняется — для изменения количества используется [[#changeBuyCardPositionQuantity]]. TradeManager заполняет `name` и `prefabName` из предложения и пересчитывает `lineSum` по актуальной цене предложения и `quantity`. После успеха клиент обязан вызвать [[#getActiveBuyCard]] для актуальных `buyFailReasons` и `moneyShortfall`.
 
 При нехватке товара на складе операция отклоняется целиком — частичное добавление не выполняется.
 
@@ -120,15 +120,17 @@ addToBuyCard(string buyCardUid, string shopProductUid, int quantity): [[TradeMan
 - Предложение относится к тому же магазину, что и корзина (`BuyCard.shopUid`).
 - Предложение в текущих условиях допускает добавление в корзину (по правилам проекта: доступность к покупке, остаток и т.п., в духе [[TradeManager.Entities.md#ShopProduct]] `isAvailableForBuy` / `availableQuantity`).
 - Тип товара, выведенный из предложения, совместим с `BuyCard.type`.
+- Предложение ещё не присутствует в корзине (нет позиции с тем же `shopProductUid`).
 
 **Результат**
-- При успехе возвращает `status = Ok`, заполняет `positionUid` ([[TradeManager.Entities.md#BuyCardPosition]] `uid` созданной или обновлённой позиции).
+- При успехе возвращает `status = Ok`, заполняет `positionUid` ([[TradeManager.Entities.md#BuyCardPosition]] `uid` созданной позиции).
 - При отказе возвращает `status = Fail` и `failReason`.
 
 **Ошибки / причины отказа**
 - `CannotAddShopProductNotFound`
 - `CannotAddShopProductNotInShop`
 - `CannotAddShopProductNotAvailableForBuy`
+- `CannotAddShopProductAlreadyInBuyCard`
 - `CannotAddIncompatibleBuyCardType`
 - `CannotUseNonPositiveQuantity`
 

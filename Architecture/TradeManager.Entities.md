@@ -229,6 +229,7 @@ enum AddToBuyCardFailReasonEnum
 	case CannotAddShopProductNotFound;
 	case CannotAddShopProductNotInShop;
 	case CannotAddShopProductNotAvailableForBuy;
+	case CannotAddShopProductAlreadyInBuyCard;
 	case CannotAddIncompatibleBuyCardType;
 	case CannotUseNonPositiveQuantity;
 }
@@ -238,6 +239,7 @@ enum AddToBuyCardFailReasonEnum
 - `CannotAddShopProductNotFound` - в каталоге TradeManager нет предложения с указанным `shopProductUid` (неизвестный или снятый с продажи uid).
 - `CannotAddShopProductNotInShop` - предложение есть, но не относится к магазину корзины (`BuyCard.shopUid`).
 - `CannotAddShopProductNotAvailableForBuy` - предложение в текущем состоянии нельзя добавить в корзину (недоступно к покупке, нехватка остатка и т.п. — по правилам проекта).
+- `CannotAddShopProductAlreadyInBuyCard` - предложение с указанным `shopProductUid` уже присутствует в корзине; для изменения количества используется [[TradeManager.BuyMethods.md#changeBuyCardPositionQuantity]].
 - `CannotAddIncompatibleBuyCardType` - после разрешения предложения по `shopProductUid` тип товара несовместим с типом корзины.
 - `CannotUseNonPositiveQuantity` - количество должно быть больше 0.
 
