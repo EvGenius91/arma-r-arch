@@ -3,6 +3,8 @@
 Назад: [[TradeManager.md]]
 Сущности: [[TradeManager.Entities.md]]
 
+Документ описывает публичное поведение JSON-RPC API.
+
 ### getShopCategories
 
 **Сигнатура**
@@ -18,7 +20,7 @@ getShopCategories(string shopUid): [[TradeManager.Entities.md#GetShopCategoriesR
 - При успехе возвращает `status = Ok` и заполненный массив `categories`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `ShopNotFound`
 
 ### getProductsForBuyByCharacter
@@ -38,7 +40,7 @@ getProductsForBuyByCharacter(string shopUid, string categoryUid, string characte
 - При успехе возвращает `status = Ok` и заполненный массив `products`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `ShopNotFound`
 - `CategoryNotFound`
 - `CharacterNotFound`
@@ -58,5 +60,5 @@ getDescriptionByPrefab(string prefabName): [[TradeManager.Entities.md#GetDescrip
 - При успехе возвращает `status = Ok` и `description`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `PrefabNotFound`

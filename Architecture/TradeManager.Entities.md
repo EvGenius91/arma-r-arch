@@ -2,6 +2,8 @@
 
 Назад: [[TradeManager.md]]
 
+Сущности описаны в виде JSON-объектов и строковых enum, которые возвращает публичный JSON-RPC API.
+
 ### OperationStatusEnum
 
 **Сигнатура**
@@ -58,7 +60,7 @@ class BuyCard
 **Инварианты**
 - На персонажа разрешена только одна активная корзина.
 - `deliveryMethod` должен быть совместим с `type`.
-- Среди позиций в `positions` значение `shopProductUid` не повторяется: для одного предложения каталога одна строка корзины, повторное добавление увеличивает её `quantity`.
+- Среди позиций в `positions` значение `shopProductUid` не повторяется: для одного предложения каталога одна строка корзины, повторное добавление отклоняется.
 - `canBuy ⟺ buyFailReasons` пуст (клиентская семантика кнопки «Купить»).
 - `ErrorInPosition` в `buyFailReasons` добавляется производно: если нет нативных cart-level причин, но хотя бы у одной позиции `buyFailReasons` не пуст (см. [[#BuyCardFailReasonEnum]]).
 - При пустом `positions` в `buyFailReasons` включается `EmptyBuyCard`.
@@ -482,13 +484,13 @@ class SellCardPosition
 ```
 
 **Назначение**
-Одна агрегированная строка корзины продажи. Для UI: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`.
+Одна агрегированная строка корзины продажи. В API-ответе содержит `uid`, `name`, `prefabName`, `entityUids`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`.
 
 **Свойства**
 - `uid: string` - идентификатор строки в корзине продажи.
 - `name: string` - отображаемое имя позиции (как у [[#ShopProduct]] `name`; обычно совпадает с именем товара; приходит в данных позиции вместе с агрегатом строки).
 - `prefabName: string` - имя префаба для строки; приходит в данных позиции в составе актуального состояния корзины.
-- `entityUids: string[]` - uid игровых сущностей в строке; состав задаётся TradeManager при [[TradeManager.SellMethods.md#addToSellCard]] и [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]]. Клиент UI не передаёт и не использует это поле (аналог отсутствия entity-id в [[#BuyCardPosition]]).
+- `entityUids: string[]` - uid игровых сущностей в строке. Клиент получает это поле в `SellCardPosition`, но не передаёт `entityUids` в методы добавления или изменения количества.
 - `quantity: int` - количество для отображения и проверок; приходит в агрегированных данных позиции/корзины.
 - `unitPrice: int` - цена выкупа за единицу на момент формирования или обновления строки (в минимальных денежных единицах мира / условных единицах — по правилам проекта); согласована с ценой из соответствующего агрегата инвентаря.
 - `lineSum: int` - сумма по строке с учётом `quantity` (`unitPrice * quantity`; те же единицы, что у [[#ShopProduct]] `unitPrice`); пересчитывается TradeManager при [[TradeManager.SellMethods.md#addToSellCard]] и [[TradeManager.SellMethods.md#changeSellCardPositionQuantity]].
@@ -1014,14 +1016,13 @@ class InventoryProductPosition
 	int quantity;
 	int unitPrice;
 	int lineSum;
-	bool isAvailableForSell;
 	SellCardPositionFailReasonEnum[] sellFailReasons;
 	string[] allowedShopUids;
 }
 ```
 
 **Назначение**
-Одна агрегированная строка снимка инвентаря для продажи: идентификатор строки, префаб, фактическое количество в инвентаре, цена выкупа за единицу и сумма по строке в контексте `shopUid`, признак доступности к продаже в этом магазине и детали отказа. Симметрия с [[#ShopProduct]]: `uid` передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`, `unitPrice` — цена за единицу в контексте магазина.
+Одна агрегированная строка снимка инвентаря для продажи: идентификатор строки, префаб, фактическое количество в инвентаре, цена выкупа за единицу и сумма по строке в контексте `shopUid`, причины недоступности к продаже и список разрешённых магазинов. Симметрия с [[#ShopProduct]]: `uid` передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`, `unitPrice` — цена за единицу в контексте магазина.
 
 **Свойства**
 - `uid: string` - стабильный идентификатор агрегированной строки в контексте `(characterUid, shopUid, ключ агрегации)`; тот же id, что передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`. Стабилен между повторными вызовами [[TradeManager.SellMethods.md#getInventoryForSell]], пока не меняется состав агрегата (по умолчанию ключ агрегации = `prefabName`).
@@ -1030,9 +1031,8 @@ class InventoryProductPosition
 - `quantity: int` - фактическое количество единиц в агрегате у персонажа в инвентаре. До успешного [[TradeManager.SellMethods.md#sell]] не уменьшается из‑за сущностей, уже учтённых в [[#SellCard]].
 - `unitPrice: int` - цена выкупа за единицу в контексте магазина из [[TradeManager.SellMethods.md#getInventoryForSell]] (в минимальных денежных единицах мира / условных единицах — по правилам проекта; тот же смысл, что у [[#ShopProduct]] `unitPrice`).
 - `lineSum: int` - сумма выкупа по строке с учётом `quantity` (`unitPrice * quantity`; те же единицы, что поле `lineSum` у [[#SellCardPosition]]).
-- `isAvailableForSell: bool` - можно ли продать все сущности строки в текущем `shopUid` (и при необходимости «вообще» — по правилам проекта).
-- `sellFailReasons: SellCardPositionFailReasonEnum[]` - при `isAvailableForSell = false` указывает причины недоступности; на уровне строки инвентаря используются `CannotSellEntity`, `CannotSellEntityInShop`. При `isAvailableForSell = true` — пустой массив.
-- `allowedShopUids: string[]` - при `isAvailableForSell = false` и `CannotSellEntityInShop` в `sellFailReasons` — список магазинов, где продажа разрешена (как у [[#AddToSellCardResult]] / [[#SellCardPosition]]); иначе не используется.
+- `sellFailReasons: SellCardPositionFailReasonEnum[]` - причины недоступности продажи; на уровне строки инвентаря используются `CannotSellEntity`, `CannotSellEntityInShop`. Пустой массив означает, что строка доступна к продаже в текущем контексте.
+- `allowedShopUids: string[]` - при `CannotSellEntityInShop` в `sellFailReasons` — список магазинов, где продажа разрешена (как у [[#AddToSellCardResult]] / [[#SellCardPosition]]); иначе пустой массив или не используется клиентом.
 
 **Связано**
 [[#SellCardPosition]], [[#SellCardPositionFailReasonEnum]], [[#InventoryForSell]]

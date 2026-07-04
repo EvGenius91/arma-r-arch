@@ -545,7 +545,7 @@
 | `sellFailReasons` | array  | Причины отказа на уровне корзины (`SellCardFailReasonEnum`); при пустой корзине — `["EmptySellCard"]` |
 | `totalSum`        | number | Сумма `lineSum` по всем позициям; при пустой корзине — `0` |
 
-Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids` (числа: `quantity`, `unitPrice`, `lineSum`; `sellFailReasons` и `allowedShopUids` — массивы строк). Поле `entityUids` может присутствовать во внутреннем составе строки, но клиент UI его не использует.
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `entityUids`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids` (числа: `quantity`, `unitPrice`, `lineSum`; `entityUids`, `sellFailReasons` и `allowedShopUids` — массивы строк). Клиент получает `entityUids` в ответе, но не передаёт их в методы добавления или изменения количества.
 
 **Пример запроса**
 
@@ -706,6 +706,7 @@
           "uid": "sell-pos-1b2c",
           "name": "AK-74",
           "prefabName": "AK74",
+          "entityUids": ["entity-ak74-1", "entity-ak74-2"],
           "quantity": 2,
           "unitPrice": 4000,
           "lineSum": 8000,
@@ -764,7 +765,7 @@
 | `positions`  | array  | Агрегированные строки (`InventoryProductPosition`) |
 | `totalAmount`| number | Сумма `lineSum` по всем строкам в `positions` |
 
-Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `isAvailableForSell`, `sellFailReasons` (при `isAvailableForSell = false`), `allowedShopUids` (при `"CannotSellEntityInShop"` в `sellFailReasons`). Числа: `quantity`, `unitPrice`, `lineSum`.
+Элемент `positions`: объекты с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`. Числа: `quantity`, `unitPrice`, `lineSum`; `sellFailReasons` и `allowedShopUids` — массивы строк. Пустой `sellFailReasons` означает, что строка доступна для продажи в текущем контексте.
 
 **Пример запроса**
 
@@ -798,8 +799,8 @@
           "quantity": 3,
           "unitPrice": 4000,
           "lineSum": 12000,
-          "isAvailableForSell": true,
-          "sellFailReasons": []
+          "sellFailReasons": [],
+          "allowedShopUids": []
         }
       ],
       "totalAmount": 12000

@@ -3,9 +3,11 @@
 Назад: [[TradeManager.md]]
 Сущности: [[TradeManager.Entities.md]]
 
+Документ описывает публичное поведение JSON-RPC API.
+
 ### Поток UI продажи
 
-Симметрия с покупкой: клиент работает с `uid` агрегированной строки и `quantity`, без выбора и синхронизации `entityUid`.
+Симметрия с покупкой: клиент передаёт `uid` агрегированной строки и `quantity`; конкретные `entityUids` приходят в ответе корзины, но не выбираются клиентом вручную.
 
 1. [[#getInventoryForSell]] → список строк с `uid`, `quantity`
 2. [[#getActiveSellCard]] → корзина с `sellFailReasons`
@@ -15,12 +17,15 @@
 
 ### Пересчёт состояния корзины
 
-TradeManager пересчитывает `sellFailReasons`, `totalSum` у [[TradeManager.Entities.md#SellCard]] и `sellFailReasons` (и при необходимости `allowedShopUids`) у каждой [[TradeManager.Entities.md#SellCardPosition]] при формировании снимка корзины:
+TradeManager возвращает актуальный снимок корзины в поле `card` публичных API-ответов. В этом снимке пересчитаны `sellFailReasons`, `totalSum` у [[TradeManager.Entities.md#SellCard]] и `sellFailReasons` (и при необходимости `allowedShopUids`) у каждой [[TradeManager.Entities.md#SellCardPosition]].
+
+Снимок возвращается в ответах:
 
 - [[#getActiveSellCard]]
-- [[#createSellCard]] / [[#recreateSellCard]] (поле `card` в ответе)
-- после [[#sell]] с `status = Fail`
-- после мутаций позиций ([[#changeSellCardPositionQuantity]] и т.п.) — на стороне бекенда до ответа клиенту
+- [[#createSellCard]]
+- [[#recreateSellCard]]
+
+После мутаций, которые не возвращают `card`, клиент получает актуальное состояние через повторный вызов [[#getActiveSellCard]].
 
 **Cart-level проверки** (в `SellCard.sellFailReasons`):
 - `EmptySellCard` — если `positions` пуст;
@@ -36,7 +41,7 @@ TradeManager пересчитывает `sellFailReasons`, `totalSum` у [[Trade
 
 **Инвариант клиента:** `canSell ⟺ card.sellFailReasons` пуст. Пустой `sellFailReasons` не гарантирует успех [[#sell]] (возможна гонка); после `sell = Fail` клиент обязан вызвать [[#getActiveSellCard]].
 
-**Refetch корзины:** клиент перезапрашивает [[#getActiveSellCard]] после успешного [[#addToSellCard]], после [[#changeSellCardPositionQuantity]], после `sell = Fail`, при изменении инвентаря персонажа, переключении buy/sell и по событиям с бекенда.
+**Refetch корзины:** клиент перезапрашивает [[#getActiveSellCard]] после успешного [[#addToSellCard]], после [[#changeSellCardPositionQuantity]], после удаления позиции или корзины, после `sell = Fail`, при изменении инвентаря персонажа, переключении buy/sell и по событиям с сервера.
 
 ### createSellCard
 
@@ -57,7 +62,7 @@ createSellCard(string shopUid, string characterUid): [[TradeManager.Entities.md#
 - При успехе возвращает `status = Ok` и заполненный `card`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotCreateSellCardAlreadyExists`
 
 ### recreateSellCard
@@ -86,13 +91,13 @@ getActiveSellCard(string characterUid): [[TradeManager.Entities.md#GetActiveSell
 - `characterUid: string` - идентификатор персонажа.
 
 **Описание**
-Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа с пересчитанными `sellFailReasons`, `totalSum`. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`) для UI.
+Возвращает текущую активную [[TradeManager.Entities.md#SellCard]] персонажа с пересчитанными `sellFailReasons`, `totalSum`. В `card.positions` — агрегированные строки ([[TradeManager.Entities.md#SellCardPosition]]: `uid`, `name`, `prefabName`, `entityUids`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`) для UI.
 
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `card`.
 - Если активной корзины продажи нет: `status = Fail` и `failReason = NoActiveSellCard`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `NoActiveSellCard`
 
 ### getInventoryForSell
@@ -103,10 +108,10 @@ getInventoryForSell(string characterUid, string shopUid, bool isExcludeNotAvaila
 **Аргументы**
 - `characterUid: string` - идентификатор персонажа.
 - `shopUid: string` - идентификатор магазина (контекст цен и правил продажи в этом магазине).
-- `isExcludeNotAvailableForSell: bool` - если `true`, в ответ попадают только агрегированные строки, доступные для продажи в указанном `shopUid`; если `false` — все агрегированные строки инвентаря персонажа, с отметкой доступности и `sellFailReasons` / `allowedShopUids` на уровне строки (см. [[TradeManager.Entities.md#InventoryProductPosition]]).
+- `isExcludeNotAvailableForSell: bool` - если `true`, в ответ попадают только агрегированные строки, доступные для продажи в указанном `shopUid`; если `false` — все агрегированные строки инвентаря персонажа, с `sellFailReasons` / `allowedShopUids` на уровне строки (см. [[TradeManager.Entities.md#InventoryProductPosition]]).
 
 **Описание**
-Собирает элементы инвентаря персонажа (владение персонажем, объём инвентаря/контейнеров — по правилам проекта) и возвращает [[TradeManager.Entities.md#InventoryForSell]]: массив [[TradeManager.Entities.md#InventoryProductPosition]] с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum` плюс признак и детали доступности к продаже в текущем магазине, а также [[TradeManager.Entities.md#InventoryForSell]] `totalAmount` — сумма `lineSum` по всем строкам в `positions` (после фильтра при `isExcludeNotAvailableForSell = true`).
+Возвращает [[TradeManager.Entities.md#InventoryForSell]]: массив [[TradeManager.Entities.md#InventoryProductPosition]] с полями `uid`, `name`, `prefabName`, `quantity`, `unitPrice`, `lineSum`, `sellFailReasons`, `allowedShopUids`, а также `totalAmount` — сумму `lineSum` по всем строкам в `positions` (после фильтра при `isExcludeNotAvailableForSell = true`).
 
 `quantity` в каждой строке — фактическое количество в инвентаре; до успешного [[#sell]] не уменьшается из‑за позиций в корзине. Повторный вызов после переключения режима покупки/продажи не требует клиентской синхронизации `entityUid`.
 
@@ -114,7 +119,7 @@ getInventoryForSell(string characterUid, string shopUid, bool isExcludeNotAvaila
 - При успехе возвращает `status = Ok` и заполненный `inventoryForSell` (в т.ч. `positions` и `totalAmount`).
 - При отказе возвращает `status = Fail`, `failReason` из [[TradeManager.Entities.md#GetInventoryForSellFailReasonEnum]]; `inventoryForSell` не используется.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `ShopNotFound`
 - `CharacterNotFound`
 
@@ -129,7 +134,7 @@ addToSellCard(string sellCardUid, string inventoryPositionUid, int quantity): [[
 - `quantity: int` - добавляемое количество.
 
 **Описание**
-TradeManager по `inventoryPositionUid` находит агрегат в инвентаре персонажа в контексте `SellCard.shopUid`, выбирает `quantity` свободных сущностей (не уже в корзине), добавляет или обновляет [[TradeManager.Entities.md#SellCardPosition]], заполняет `unitPrice` из агрегата и пересчитывает `lineSum` (`unitPrice * quantity`). Симметрия с [[TradeManager.BuyMethods.md#addToBuyCard]]: клиент передаёт id строки каталога/инвентаря и количество; конкретные `entityUid` выбирает TradeManager.
+TradeManager по `inventoryPositionUid` добавляет или обновляет [[TradeManager.Entities.md#SellCardPosition]] и возвращает `positionUid`. Симметрия с [[TradeManager.BuyMethods.md#addToBuyCard]]: клиент передаёт id строки каталога/инвентаря и количество.
 
 После успеха клиент обязан вызвать [[#getActiveSellCard]] для актуальных `sellFailReasons`.
 
@@ -142,7 +147,7 @@ TradeManager по `inventoryPositionUid` находит агрегат в инв
 - Предметы агрегата должны быть доступны для продажи.
 - Продажа должна быть разрешена в текущем магазине: у [[TradeManager.Entities.md#SellCard]] с идентификатором `sellCardUid` поле `shopUid` должно входить в `allowedShopUids` для добавляемого агрегата.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotAddInventoryPositionNotFound`
 - `CannotAddQuantityExceedsInventory`
 - `CannotUseNonPositiveQuantity`
@@ -163,7 +168,7 @@ changeSellCardPositionQuantity(string sellCardPositionUid, int newQuantity): [[T
 - `newQuantity: int` - новое количество для позиции.
 
 **Описание**
-При увеличении TradeManager добирает сущности из того же агрегата инвентаря (`prefabName` позиции), проверяя, что суммарное количество в корзине не превышает `quantity` в инвентаре. При уменьшении снимает лишние сущности из `entityUids` позиции в детерминированном порядке (LIFO — последние добавленные снимаются первыми). `unitPrice` не меняется; после смены `quantity` TradeManager пересчитывает `lineSum` (`unitPrice * newQuantity`), `sellFailReasons` позиции и корзины.
+Меняет `quantity` строки корзины продажи. Ответ содержит только `status` и, при отказе, `failReason`; актуальный снимок корзины клиент получает через [[#getActiveSellCard]].
 
 Если запрошенное `newQuantity` превышает доступное количество в инвентаре, `quantity` откатывается к максимально допустимому значению (не меньше 1), возвращается `status = Fail` и `failReason`. Актуальное `quantity` и причины клиент получает через [[#getActiveSellCard]] после ответа метода.
 
@@ -178,7 +183,7 @@ changeSellCardPositionQuantity(string sellCardPositionUid, int newQuantity): [[T
 - При успехе возвращает `status = Ok`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotUseNonPositiveQuantity`
 - `QuantityExceedsInventory`
 - `CannotSellEntity`
@@ -213,11 +218,9 @@ sell(string sellCardUid): [[TradeManager.Entities.md#SellResult]]
 - `sellCardUid: string` - идентификатор корзины продажи.
 
 **Описание**
-Продаёт все позиции из корзины продажи одним вызовом. Возвращает только `status`; при `Fail` причину не указывает. TradeManager пересчитывает корзину на бекенде; клиент вызывает [[#getActiveSellCard]] для получения актуальных `sellFailReasons` и `sellFailReasons` позиций.
+Продаёт все позиции из корзины продажи одним вызовом. Возвращает только `status`; при `Fail` причину не указывает. Клиент вызывает [[#getActiveSellCard]] для получения актуальных `sellFailReasons` и `sellFailReasons` позиций.
 
 Допустимо, что `sell` вернёт `Fail`, даже если предыдущий снимок корзины показывал пустой `sellFailReasons` (гонка состояния).
-
-Поток применения в игровом мире после успешного ответа: [[BackendGameMutation.md]].
 
 **Проверки**
 - Для каждого `entityUid` из объединения всех массивов `entityUids` по позициям: сущность существует и допускает продажу.

@@ -3,14 +3,19 @@
 Назад: [[TradeManager.md]]
 Сущности: [[TradeManager.Entities.md]]
 
+Документ описывает публичное поведение JSON-RPC API.
+
 ### Пересчёт состояния корзины
 
-TradeManager пересчитывает `buyFailReasons`, `moneyShortfall`, `totalSum` у [[TradeManager.Entities.md#BuyCard]] и `buyFailReasons` у каждой [[TradeManager.Entities.md#BuyCardPosition]] при формировании снимка корзины:
+TradeManager возвращает актуальный снимок корзины в поле `card` публичных API-ответов. В этом снимке пересчитаны `buyFailReasons`, `moneyShortfall`, `totalSum` у [[TradeManager.Entities.md#BuyCard]] и `buyFailReasons` у каждой [[TradeManager.Entities.md#BuyCardPosition]].
+
+Снимок возвращается в ответах:
 
 - [[#getActiveBuyCard]]
-- [[#createBuyCard]] / [[#recreateBuyCard]] (поле `card` в ответе)
-- после [[#buy]] с `status = Fail`
-- после мутаций позиций ([[#changeBuyCardPositionQuantity]] и т.п.) — на стороне бекенда до ответа клиенту
+- [[#createBuyCard]]
+- [[#recreateBuyCard]]
+
+После мутаций, которые не возвращают `card`, клиент получает актуальное состояние через повторный вызов [[#getActiveBuyCard]].
 
 **Cart-level проверки** (в `BuyCard.buyFailReasons`):
 - совместимость `BuyCardTypeEnum` и `DeliveryMethod`;
@@ -27,7 +32,7 @@ TradeManager пересчитывает `buyFailReasons`, `moneyShortfall`, `tot
 
 **Инвариант клиента:** `canBuy ⟺ card.buyFailReasons` пуст. Пустой `buyFailReasons` не гарантирует успех [[#buy]] (возможна гонка); после `buy = Fail` клиент обязан вызвать [[#getActiveBuyCard]].
 
-**Refetch корзины:** клиент перезапрашивает [[#getActiveBuyCard]] после успешного [[#addToBuyCard]], после [[#changeBuyCardPositionQuantity]], после `buy = Fail`, при изменении денег/инвентаря персонажа и по событиям с бекенда.
+**Refetch корзины:** клиент перезапрашивает [[#getActiveBuyCard]] после успешного [[#addToBuyCard]], после [[#changeBuyCardPositionQuantity]], после удаления позиции или корзины, после `buy = Fail`, при изменении денег/инвентаря персонажа и по событиям с сервера.
 
 ### createBuyCard
 
@@ -51,7 +56,7 @@ createBuyCard(string shopUid, string characterUid, [[TradeManager.Entities.md#Bu
 - При успехе возвращает `status = Ok` и заполненный `card`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotCreateBuyCardAlreadyExists`
 - `CannotUseDeliveryMethodForBuyCardType`
 
@@ -78,7 +83,7 @@ recreateBuyCard(string shopUid, string characterUid, [[TradeManager.Entities.md#
 - При успехе возвращает `status = Ok` и заполненный `card`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotUseDeliveryMethodForBuyCardType`
 
 ### getActiveBuyCard
@@ -96,7 +101,7 @@ getActiveBuyCard(string characterUid): [[TradeManager.Entities.md#GetActiveBuyCa
 - При успехе возвращает `status = Ok` и заполненный `card`.
 - Если активной корзины покупки нет: `status = Fail` и `failReason = NoActiveBuyCard`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `NoActiveBuyCard`
 
 ### addToBuyCard
@@ -106,11 +111,11 @@ addToBuyCard(string buyCardUid, string shopProductUid, int quantity): [[TradeMan
 
 **Аргументы**
 - `buyCardUid: string` - идентификатор корзины покупки.
-- `shopProductUid: string` - идентификатор строки каталога в смысле поля `uid` у [[TradeManager.Entities.md#ShopProduct]] (тот же идентификатор, что приходит в `products` из [[TradeManager.ShopMethods.md#getProductsForBuyByCharacter]]). Префаб, тип товара для [[TradeManager.Entities.md#BuyCardTypeEnum]] и цена для последующих проверок разрешаются в TradeManager по этому uid и по магазину корзины (`shopUid` у [[TradeManager.Entities.md#BuyCard]]).
+- `shopProductUid: string` - идентификатор строки каталога в смысле поля `uid` у [[TradeManager.Entities.md#ShopProduct]] (тот же идентификатор, что приходит в `products` из [[TradeManager.ShopMethods.md#getProductsForBuyByCharacter]]).
 - `quantity: int` - добавляемое количество.
 
 **Описание**
-При успехе создаётся новая [[TradeManager.Entities.md#BuyCardPosition]] с указанным `quantity`. В одной корзине не более одной позиции на `shopProductUid`; повторный вызов с тем же `shopProductUid` отклоняется — для изменения количества используется [[#changeBuyCardPositionQuantity]]. TradeManager заполняет `name` и `prefabName` из предложения и пересчитывает `lineSum` по актуальной цене предложения и `quantity`. После успеха клиент обязан вызвать [[#getActiveBuyCard]] для актуальных `buyFailReasons` и `moneyShortfall`.
+При успехе создаётся новая [[TradeManager.Entities.md#BuyCardPosition]] с указанным `quantity`. В одной корзине не более одной позиции на `shopProductUid`; повторный вызов с тем же `shopProductUid` отклоняется — для изменения количества используется [[#changeBuyCardPositionQuantity]]. Ответ содержит `positionUid`; после успеха клиент вызывает [[#getActiveBuyCard]] для получения актуального `card`.
 
 При нехватке товара на складе операция отклоняется целиком — частичное добавление не выполняется.
 
@@ -118,7 +123,7 @@ addToBuyCard(string buyCardUid, string shopProductUid, int quantity): [[TradeMan
 - `quantity` должно быть больше 0.
 - Предложение с `shopProductUid` существует в каталоге TradeManager.
 - Предложение относится к тому же магазину, что и корзина (`BuyCard.shopUid`).
-- Предложение в текущих условиях допускает добавление в корзину (по правилам проекта: доступность к покупке, остаток и т.п., в духе [[TradeManager.Entities.md#ShopProduct]] `isAvailableForBuy` / `availableQuantity`).
+- Предложение в текущих условиях допускает добавление в корзину: доступно к покупке и имеет достаточный `availableQuantity`.
 - Тип товара, выведенный из предложения, совместим с `BuyCard.type`.
 - Предложение ещё не присутствует в корзине (нет позиции с тем же `shopProductUid`).
 
@@ -126,7 +131,7 @@ addToBuyCard(string buyCardUid, string shopProductUid, int quantity): [[TradeMan
 - При успехе возвращает `status = Ok`, заполняет `positionUid` ([[TradeManager.Entities.md#BuyCardPosition]] `uid` созданной позиции).
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotAddShopProductNotFound`
 - `CannotAddShopProductNotInShop`
 - `CannotAddShopProductNotAvailableForBuy`
@@ -144,7 +149,7 @@ changeBuyCardPositionQuantity(string buyCardPositionUid, int newQuantity): [[Tra
 - `newQuantity: int` - новое количество для позиции.
 
 **Описание**
-Меняет `quantity` позиции. После смены `quantity` TradeManager пересчитывает `lineSum`, `buyFailReasons` позиции и корзины.
+Меняет `quantity` позиции. Ответ содержит только `status` и, при отказе, `failReason`; актуальный снимок корзины клиент получает через [[#getActiveBuyCard]].
 
 Если запрошенное `newQuantity` превышает доступный остаток на складе, `quantity` откатывается к максимально допустимому значению (не меньше 1), возвращается `status = Fail` и `failReason`. Актуальное `quantity` и причины клиент получает через [[#getActiveBuyCard]] после ответа метода.
 
@@ -156,7 +161,7 @@ changeBuyCardPositionQuantity(string buyCardPositionUid, int newQuantity): [[Tra
 - При успехе возвращает `status = Ok`.
 - При отказе возвращает `status = Fail` и `failReason`.
 
-**Ошибки / причины отказа**
+**Причины отказа (`failReason`)**
 - `CannotUseNonPositiveQuantity`
 - `InsufficientStock`
 - `ShopProductNotAvailableForBuy`
@@ -191,7 +196,7 @@ buy(string buyCardUid): [[TradeManager.Entities.md#BuyStatus]]
 - `buyCardUid: string` - идентификатор корзины покупки.
 
 **Описание**
-Выполняет покупку. Возвращает только `status`; при `Fail` причину не указывает. TradeManager пересчитывает корзину на бекенде; клиент вызывает [[#getActiveBuyCard]] для получения актуальных `buyFailReasons` и `buyFailReasons` позиций.
+Выполняет покупку. Возвращает только `status`; при `Fail` причину не указывает. Клиент вызывает [[#getActiveBuyCard]] для получения актуальных `buyFailReasons` и `buyFailReasons` позиций.
 
 Допустимо, что `buy` вернёт `Fail`, даже если предыдущий снимок корзины показывал пустой `buyFailReasons` (гонка состояния).
 
