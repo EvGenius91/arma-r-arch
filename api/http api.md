@@ -44,7 +44,7 @@
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "getShopCategories",
+  "method": "trade@getShopCategories",
   "params": {
     "shopUid": "shop-001"
   },
@@ -84,6 +84,90 @@
     "status": "Fail",
     "failReason": "ShopNotFound",
     "categories": null
+  },
+  "id": 1
+}
+```
+
+### getProductsForBuyByCharacter
+
+Возвращает список товаров магазина в указанной категории с учётом контекста персонажа. Поле `uid` у каждого элемента `products` передаётся в [addToBuyCard](#addtobuycard) как `shopProductUid`. Подробнее: [Architecture/TradeManager.ShopMethods.md](../Architecture/TradeManager.ShopMethods.md#getproductsforbuybycharacter), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md) (`ShopProduct`, `ShopProductsResult`).
+
+**`method`:** `"getProductsForBuyByCharacter"`
+
+**`params`**
+
+| Поле           | Тип    | Описание                                              |
+| -------------- | ------ | ----------------------------------------------------- |
+| `shopUid`      | string | Идентификатор магазина                                |
+| `categoryUid`  | string | Идентификатор категории (`ShopCategory.uid`)          |
+| `characterUid` | string | Идентификатор персонажа (контекст цен и доступности)  |
+
+**`result` (`GetProductsForBuyByCharacterResult` / `ShopProductsResult`)**
+
+| Поле         | Тип            | Описание                                                                                  |
+| ------------ | -------------- | ----------------------------------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                                               |
+| `failReason` | string \| null | При `Fail`: `"ShopNotFound"`, `"CategoryNotFound"`, `"CharacterNotFound"`; при `Ok` — `null` |
+| `products`   | array \| null  | При `Ok`: массив `ShopProduct`; при `Fail` — `null`                                       |
+
+Элемент `products`: объекты с полями `uid`, `prefabName`, `name`, `unitPrice`, `availableQuantity`, `isAvailableForBuy` (числа: `unitPrice`, `availableQuantity`; `isAvailableForBuy` — bool).
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "trade@getProductsForBuyByCharacter",
+  "params": {
+    "shopUid": "shop-001",
+    "categoryUid": "cat-weapons",
+    "characterUid": "char-42"
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "products": [
+      {
+        "uid": "prod-ak74",
+        "prefabName": "AK74",
+        "name": "AK-74",
+        "unitPrice": 5000,
+        "availableQuantity": 10,
+        "isAvailableForBuy": true
+      },
+      {
+        "uid": "prod-m4",
+        "prefabName": "M4A1",
+        "name": "M4A1",
+        "unitPrice": 6000,
+        "availableQuantity": 5,
+        "isAvailableForBuy": true
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — отказ (категория не найдена)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "CategoryNotFound",
+    "products": null
   },
   "id": 1
 }
