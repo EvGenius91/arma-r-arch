@@ -17,6 +17,78 @@
 
 ## Методы
 
+### getShopCategories
+
+Возвращает список категорий товаров, доступных в указанном магазине. Подробнее: [Architecture/TradeManager.ShopMethods.md](../Architecture/TradeManager.ShopMethods.md#getshopcategories), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
+
+**`method`:** `"getShopCategories"`
+
+**`params`**
+
+| Поле      | Тип    | Описание               |
+| --------- | ------ | ---------------------- |
+| `shopUid` | string | Идентификатор магазина |
+
+**`result` (`GetShopCategoriesResult`)**
+
+| Поле         | Тип            | Описание                                                          |
+| ------------ | -------------- | ----------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                       |
+| `failReason` | string \| null | При `Fail`: `"ShopNotFound"`; при `Ok` — `null`                   |
+| `categories` | array \| null  | При `Ok`: массив `ShopCategory`; при `Fail` — `null`              |
+
+Элемент `categories`: объекты с полями `uid`, `name`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getShopCategories",
+  "params": {
+    "shopUid": "shop-001"
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "categories": [
+      {
+        "uid": "cat-weapons",
+        "name": "Оружие"
+      },
+      {
+        "uid": "cat-ammo",
+        "name": "Боеприпасы"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — отказ (магазин не найден)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "ShopNotFound",
+    "categories": null
+  },
+  "id": 1
+}
+```
+
 ### createBuyCard
 
 Создаёт корзину покупки для персонажа в указанном магазине. Подробнее: [Architecture/TradeManager.BuyMethods.md](../Architecture/TradeManager.BuyMethods.md#createbuycard), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
