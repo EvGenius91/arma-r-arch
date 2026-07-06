@@ -1198,11 +1198,72 @@
 }
 ```
 
+### getCash
+
+Возвращает сумму наличных у персонажа. Подробнее: [Architecture/BankingManager.md](../Architecture/BankingManager.md#getcash), сущности: [Architecture/BankingManager.Entities.md](../Architecture/BankingManager.Entities.md).
+
+**`method`:** `"banking@getCash"`
+
+**`params`**
+
+| Поле           | Тип    | Описание              |
+| -------------- | ------ | --------------------- |
+| `characterUid` | string | Идентификатор персонажа |
+
+**`result` (`GetCashResult`)**
+
+| Поле         | Тип            | Описание                                                          |
+| ------------ | -------------- | ----------------------------------------------------------------- |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                       |
+| `failReason` | string \| null | При `Fail`: `"CharacterNotFound"`; при `Ok` — `null`              |
+| `amount`     | number \| null | При `Ok`: сумма наличных в минимальных денежных единицах; при `Fail` — `null` |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "banking@getCash",
+  "params": {
+    "characterUid": "char-42"
+  },
+  "id": 12
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "amount": 15000
+  },
+  "id": 12
+}
+```
+
+**Пример ответа — отказ (персонаж не найден)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "CharacterNotFound",
+    "amount": null
+  },
+  "id": 12
+}
+```
+
 ### getDescriptionByPrefab
 
 Возвращает текстовое описание товара по имени префаба. Подробнее: [Architecture/TradeManager.ShopMethods.md](../Architecture/TradeManager.ShopMethods.md#getdescriptionbyprefab), сущности: [Architecture/TradeManager.Entities.md](../Architecture/TradeManager.Entities.md).
 
-**`method`:** `"getDescriptionByPrefab"`
+**`method`:** `"catalog@getDescriptionByPrefab"`
 
 **`params`**
 
@@ -1223,7 +1284,7 @@
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "getDescriptionByPrefab",
+  "method": "catalog@getDescriptionByPrefab",
   "params": {
     "prefabName": "AK74"
   },
