@@ -9,6 +9,7 @@
 ## Принципы
 
 - [[BackendGameMutation.md]] — как бекенд принимает решение, а CommandBus применяет его в игровом мире (продажа, покупка)
+- [[../Common concepts.md]] — GameBackendManager и правило: все события с бекенда → Local EventBus
 
 ## TradeManager
 
@@ -27,8 +28,22 @@
 - [[BankingManager.md]] — обзор и методы
 - [[BankingManager.Entities.md]] — сущности и enum
 
+## EntityLockRegistry
+
+Отдельный сервис локальных блокировок `entityUid`. От него зависят EntityManager и TradeManager.
+
+- [[EntityLockRegistry.md]] — API Lock / Unlock / IsLocked; EntityManager блокирует uid при каждом enqueuePickup / Drop / Move; Trade — SellPending при продаже
+
 ## EntityManager
 
-Регистрация объектов, создаваемых в мире (техника, предметы инвентаря).
+Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. **Зависит от EntityLockRegistry.**
 
-- [[EntityManager.md]] — методы registerEntityBuy, registerRemoveEntity
+- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue* (+ Lock)
+- [[EntityManager.Operations.md]] — операции, очередь по сущности
+- [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций
+
+## CharacterStateManager
+
+Синхронизация состояния персонажа (здоровье, витальность, позиция, проекции). Инвентарь в снимке — проекция из EntityManager.
+
+- [[CharacterStateManager (черновик) 3.md]] — операции персонажа, `applyOperations`, recovery
