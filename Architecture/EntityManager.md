@@ -10,9 +10,9 @@ EntityManager хранит состояние всех сущностей в и�
 EntityManager ──depends on──► EntityLockRegistry
 ```
 
-[[EntityLockRegistry.md|EntityLockRegistry]] — **отдельный сервис** (описан в своём документе). EntityManager не хранит реестр блокировок внутри себя: при `enqueuePickupEntity`, `enqueueDropEntity`, `enqueueMoveEntity` сущность **блокируется через EntityLockRegistry** (`Lock`), после ответа бекенда — `Unlock`.
+[[EntityLockRegistry.md|EntityLockRegistry]] — **отдельный сервис** (описан в своём документе). EntityManager не хранит реестр блокировок внутри себя: `Lock` ставится **когда пачка ops по uid уходит на бекенд (in-flight)**, после ответа — `Unlock`. Пока ops только в очереди — lock нет. Политика очереди / flush / barrier: [[EntityManager.Operations.md]].
 
-Тем же сервисом пользуется TradeManager (`SellPending`), поэтому дроп и продажа видят одну картину занятости uid.
+Тем же сервисом пользуется TradeManager (`SellPending`), поэтому in-flight дропа и продажа видят одну картину занятости uid.
 
 ## Назначение
 
@@ -24,7 +24,7 @@ EntityManager является реестром игровых сущносте�
 - выдачу и сохранение `uid` сущности;
 - хранение текущего положения сущности: в мире, у игрока или внутри контейнера / в слоте;
 - **синхронизацию с бекендом** изменений владения и расположения (подбор, дроп, move, экипировка, передача);
-- вызов [[EntityLockRegistry.md|EntityLockRegistry]] при enqueue-операциях (блок / разблок uid);
+- вызов [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight пачки (блок / разблок uid);
 - обновление связей при изменении инвентаря;
 - регистрацию удаления сущности;
 - постановку команд в CommandBus, когда изменение должно быть применено в игровом мире (путь бекенд → мир).
@@ -96,9 +96,11 @@ sequenceDiagram
     participant EB as LocalEventBus
 
     World->>EM: enqueuePickup_Drop_Move
-    EM->>Lock: IsLocked_Lock
+    EM->>Lock: IsLocked
     EM->>EM: оптимизм_и_очередь
-    EM->>BE: commit_связей_сущности
+    Note over EM: flush_1с_или_barrier
+    EM->>Lock: Lock
+    EM->>BE: пачка_ops_по_порядку
     BE->>BE: обновить_реестр
     BE-->>EM: Ok
     EM->>Lock: Unlock
@@ -124,24 +126,26 @@ sequenceDiagram
 
 Полное описание сервиса: [[EntityLockRegistry.md]].
 
-**Правило:** любой `enqueuePickupEntity` / `enqueueDropEntity` / `enqueueMoveEntity` блокирует затронутый `entityUid` **только через EntityLockRegistry**, не через локальное поле EntityManager.
+**Правило:** блокировка uid для ops EntityManager — **только через EntityLockRegistry**, и **только на время in-flight** (не на всё время очереди).
 
 | Момент | Вызов EntityLockRegistry |
 |--------|--------------------------|
-| `enqueueDropEntity` / `enqueuePickupEntity` / `enqueueMoveEntity` | `IsLocked` → `Lock(…, ownerService: EntityManager)` |
-| Ok / Fail операции с бекендом | `Unlock` |
+| `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе оптимизм + очередь **без** Lock |
+| flush пачки (~1 с / barrier) | `Lock(…, ownerService: EntityManager)` → отправка |
+| Ok / Fail с бекендом | `Unlock` |
 | Уже есть `SellPending` от Trade | отказ enqueue (не выбрасывать продаваемый предмет) |
 | CommandBus `removeEntity` | удалить сущность **даже при lock** → `Unlock` → очистить очередь ops по uid |
 | Hard-reset дюпов | выровнять мир → `Unlock` → очистить очередь |
 
 ```text
 enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
-  → EntityLockRegistry.IsLocked / Lock
+  → EntityLockRegistry.IsLocked (отказ если занято)
   → локальный оптимизм + очередь EntityManager
-  → бекенд → Ok/Fail → EntityLockRegistry.Unlock
+  → flush (таймер / barrier) → Lock → пачка на бекенд
+  → Ok/Fail → Unlock
 ```
 
-Очередь и жизненный цикл ops: [[EntityManager.Operations.md]].
+Очередь, barrier (магазин и др.), порядок пачки: [[EntityManager.Operations.md]].
 
 ---
 
@@ -178,7 +182,7 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 | `SplitStack` / `MergeStack` | стеки (если есть в проекте) |
 | `DestroyEntity` | уничтожение / снятие с реестра (контракт уточняется отдельно) |
 
-Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): ставят операцию в очередь и через [[EntityLockRegistry.md|EntityLockRegistry]] блокируют uid. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
+Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): локальный оптимизм + очередь; `Lock` — при flush пачки. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
 
 ---
 
@@ -200,13 +204,12 @@ enqueueDropEntity(string entityUid, vector position, string characterUid): void
 
 **Описание:**
 
-1. Проверяет, что сущность существует и действие допустимо; через EntityLockRegistry: при конфликтующем `IsLocked(entityUid)` (в т.ч. `SellPending` от Trade) — отказ или постановка в очередь после текущей операции (политика EntityManager).
-2. `EntityLockRegistry.Lock(entityUid, reason: Drop, scope: InventoryOps, ownerService: EntityManager)`.
-3. Локально применяет оптимизм: сущность переносится на землю (не клон), обновляются связи в реестре сущностей EntityManager.
-4. Добавляет в исходящую очередь операцию `DropEntity` с текущим `resetGeneration` сущности.
-5. Если по этому uid нет другого in-flight — отправляет операцию на бекенд.
+1. Проверяет, что сущность существует и действие допустимо; через EntityLockRegistry: при `IsLocked(entityUid)` (in-flight EM или `SellPending` от Trade) — отказ.
+2. Локально применяет оптимизм: сущность переносится на землю (не клон), обновляются связи в реестре сущностей EntityManager.
+3. Добавляет в исходящую очередь операцию `DropEntity` с текущим `resetGeneration` сущности (без Lock).
+4. Отправка — на flush (~1 с или barrier): тогда `Lock(entityUid, reason: Drop, …)` и пачка на бекенд. См. [[EntityManager.Operations.md]].
 
-После Ok — `EntityLockRegistry.Unlock(entityUid)`. После Fail — откат локального расположения и `Unlock`.
+После Ok — `Unlock`. После Fail — откат локального расположения и `Unlock`.
 
 ---
 
@@ -227,11 +230,10 @@ enqueuePickupEntity(string entityUid, string targetContainerUid, string characte
 
 **Описание:**
 
-1. Проверяет доступность сущности; если `EntityLockRegistry.IsLocked(entityUid)` — отказ (второй игрок не поднимает банку, пока она занята после чужого дропа/move/sell).
-2. `Lock(entityUid, reason: PickUp, scope: InventoryOps, ownerService: EntityManager)`; при политике родителя — узкий lock контейнера назначения (`ContainerDispose`), если требуется.
-3. Локально переносит сущность в целевой контейнер (один экземпляр на uid).
-4. Ставит в очередь операцию `PickUpEntity` с `resetGeneration`.
-5. Отправляет на бекенд при отсутствии другого in-flight по этому uid.
+1. Проверяет доступность сущности; если `EntityLockRegistry.IsLocked(entityUid)` (in-flight / SellPending) — отказ. Если чужой `Drop` ещё только в очереди — подбор допустим и встаёт в очередь того же uid после `Drop`.
+2. Локально переносит сущность в целевой контейнер (один экземпляр на uid).
+3. Ставит в очередь операцию `PickUpEntity` с `resetGeneration` (без Lock).
+4. На flush: `Lock(entityUid, reason: PickUp, …)`; при политике родителя — узкий `ContainerDispose` на контейнере назначения; пачка на бекенд с сохранением порядка.
 
 Ok → `Unlock`. Fail → откат в предыдущее расположение (например обратно на землю / в машину) и `Unlock`.
 
@@ -254,13 +256,12 @@ enqueueMoveEntity(string entityUid, string targetContainerUid, string characterU
 
 **Описание:**
 
-1. Проверяет EntityLockRegistry и доменные правила (вместимость, владение контейнером и т.п.).
-2. `Lock(entityUid, reason: Move, scope: InventoryOps, ownerService: EntityManager)`.
-3. Если цель — рюкзак / носимый контейнер и есть риск dispose родителя до ответа бекенда — дополнительно `Lock(…, scope: ContainerDispose)` по политике вложенности (рюкзак — да; машину для езды — нет).
-4. Локально обновляет связи контейнер/слот.
-5. Ставит в очередь `MoveEntity` с `resetGeneration` и отправляет при возможности.
+1. Проверяет EntityLockRegistry (`IsLocked` → отказ) и доменные правила (вместимость, владение контейнером и т.п.).
+2. Локально обновляет связи контейнер/слот.
+3. Ставит в очередь `MoveEntity` с `resetGeneration` (без Lock).
+4. На flush: `Lock(entityUid, reason: Move, …)`; если цель — рюкзак / носимый контейнер — дополнительно `ContainerDispose` по политике вложенности (рюкзак — да; машину для езды — нет); пачка на бекенд.
 
-Ok → снять все lock’и этой операции через EntityLockRegistry. Fail → откат связей и Unlock.
+Ok → снять все lock’и этой операции. Fail → откат связей и Unlock.
 
 ---
 

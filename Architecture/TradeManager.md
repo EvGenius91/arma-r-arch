@@ -4,10 +4,11 @@
 
 На время `sell` TradeManager работает с общим сервисом [[EntityLockRegistry.md|EntityLockRegistry]] (не с приватным lock EntityManager):
 
-1. `IsLocked(entityUid)` — если уже занято (дроп / transfer in-flight) → sell локально не начинать.
-2. `Lock(entityUid, reason: SellPending, scope: InventoryOps, ownerService: TradeManager)` — игрок не сможет `enqueueDropEntity` / передать предмет, пока нет ответа бекенда.
-3. Fail sell → `Unlock`.
-4. Ok sell → мир чистит CommandBus `removeEntity` ([[BackendGameMutation.md]]); затем `Unlock` (после удаления сущности).
+1. При необходимости barrier/flush через EntityManager (открытие магазина / перед sell), чтобы uid инвентаря не были pending/in-flight — см. [[EntityManager.Operations.md]].
+2. `IsLocked(entityUid)` — если уже занято (пачка EM in-flight) → sell локально не начинать.
+3. `Lock(entityUid, reason: SellPending, scope: InventoryOps, ownerService: TradeManager)` — игрок не сможет `enqueueDropEntity` / передать предмет, пока нет ответа бекенда.
+4. Fail sell → `Unlock`.
+5. Ok sell → мир чистит CommandBus `removeEntity` ([[BackendGameMutation.md]]); затем `Unlock` (после удаления сущности).
 
 Так продажа и операции EntityManager делят один реестр блокировок.
 

@@ -32,14 +32,14 @@
 
 Отдельный сервис локальных блокировок `entityUid`. От него зависят EntityManager и TradeManager.
 
-- [[EntityLockRegistry.md]] — API Lock / Unlock / IsLocked; EntityManager блокирует uid при каждом enqueuePickup / Drop / Move; Trade — SellPending при продаже
+- [[EntityLockRegistry.md]] — API Lock / Unlock / IsLocked; EntityManager блокирует uid на время in-flight пачки; Trade — SellPending при продаже
 
 ## EntityManager
 
 Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. **Зависит от EntityLockRegistry.**
 
-- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue* (+ Lock)
-- [[EntityManager.Operations.md]] — операции, очередь по сущности
+- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue*
+- [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций
 
 ## CharacterStateManager
