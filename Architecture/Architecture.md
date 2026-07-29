@@ -40,6 +40,7 @@
 
 - [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue*
 - [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
+- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@applyOperations` (пачка ops на бекенд)
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций
 
 ## CharacterStateManager

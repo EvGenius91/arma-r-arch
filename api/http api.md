@@ -1319,3 +1319,149 @@
   "id": 9
 }
 ```
+
+### applyOperations (EntityManager)
+
+Принимает упорядоченную пачку операций расположения сущностей от EntityManager при flush. Вызывается только с игрового сервера (не из UI / CSM). Пачка не атомарна по всем `entityUid`; успех/отказ — по каждой ops. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md), очередь: [Architecture/EntityManager.Operations.md](../Architecture/EntityManager.Operations.md).
+
+**`method`:** `"entity@applyOperations"`
+
+**`params`**
+
+| Поле         | Тип   | Описание                                                                 |
+| ------------ | ----- | ------------------------------------------------------------------------ |
+| `operations` | array | Непустой упорядоченный список `EntityOperation` (порядок = порядок apply) |
+
+Элемент `operations`:
+
+| Поле              | Тип    | Описание                                                                 |
+| ----------------- | ------ | ------------------------------------------------------------------------ |
+| `entityUid`       | string | Идентификатор сущности                                                   |
+| `type`            | string | `PickUpEntity`, `DropEntity`, `MoveEntity`, `EquipItem`, `UnequipItem`, `SwapEquipment`, `TransferEntity`, `SplitStack`, `MergeStack`, `DestroyEntity` |
+| `resetGeneration` | number | Поколение сущности на момент отправки                                    |
+| `characterUid`    | string | Персонаж-инициатор                                                       |
+| `payload`         | object | Поля по `type` (см. ниже)                                                |
+
+`payload` для основных типов:
+
+| `type` | Поля `payload` |
+| ------ | -------------- |
+| `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string), `slot` (string \| null) |
+| `DropEntity` | `position` `{ x, y, z }` (числа) |
+| `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null) |
+
+Остальные типы — см. [EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md).
+
+**`result` (`ApplyEntityOperationsResult`)**
+
+| Поле               | Тип            | Описание                                                                 |
+| ------------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`           | string         | `"Ok"` — пачка обработана (в т.ч. с частичными Fail по ops); `"Fail"` — отказ на уровне запроса |
+| `failReason`       | string \| null | При request Fail: `"EmptyOperations"`, `"InvalidParams"`; при `Ok` — `null` |
+| `operationResults` | array \| null  | При `Ok`: массив той же длины и порядка, что `operations`; при Fail — `null` |
+
+Элемент `operationResults`:
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"`                                                      |
+| `failReason` | string \| null | При Fail: `"EntityNotFound"`, `"StaleAfterReset"`, `"ContainerNotFound"`, `"InvalidLocation"`, `"AlreadyTaken"`, `"InvalidOperation"`; при Ok — `null` |
+
+Индексация 1:1 с входным `operations[]`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@applyOperations",
+  "params": {
+    "operations": [
+      {
+        "entityUid": "ent-can-001",
+        "type": "DropEntity",
+        "resetGeneration": 0,
+        "characterUid": "char-p1",
+        "payload": {
+          "position": { "x": 100.5, "y": 12.0, "z": -40.25 }
+        }
+      },
+      {
+        "entityUid": "ent-can-001",
+        "type": "PickUpEntity",
+        "resetGeneration": 0,
+        "characterUid": "char-p2",
+        "payload": {
+          "targetContainerUid": "cont-inv-p2",
+          "slot": null
+        }
+      }
+    ]
+  },
+  "id": 42
+}
+```
+
+**Пример ответа — обе ops Ok**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Ok", "failReason": null },
+      { "status": "Ok", "failReason": null }
+    ]
+  },
+  "id": 42
+}
+```
+
+**Пример ответа — частичный успех (AlreadyTaken)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Ok", "failReason": null },
+      { "status": "Fail", "failReason": "AlreadyTaken" }
+    ]
+  },
+  "id": 42
+}
+```
+
+**Пример ответа — StaleAfterReset**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Fail", "failReason": "StaleAfterReset" }
+    ]
+  },
+  "id": 42
+}
+```
+
+**Пример ответа — отказ на уровне запроса (пустая пачка)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "EmptyOperations",
+    "operationResults": null
+  },
+  "id": 42
+}
+```

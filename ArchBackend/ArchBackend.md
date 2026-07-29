@@ -16,7 +16,7 @@
 |-------------------------|------------------|----------|
 | TradeManager | TradeService | `Contracts/TradeService/` |
 | BankingManager | BankingService | `Contracts/BankingService/` |
-| EntityManager | EntityService | `Contracts/EntityService/` |
+| EntityManager | EntityService | `Contracts/EntityService/` — RPC `entity@applyOperations` ([[../Architecture/EntityManager.HttpMethods.md]]) |
 
 Структура контракта сервиса:
 

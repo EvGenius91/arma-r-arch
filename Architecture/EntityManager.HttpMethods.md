@@ -1,0 +1,242 @@
+# HTTP-методы EntityManager (игра → бекенд)
+
+Назад: [[EntityManager.md]] · [[EntityManager.Operations.md]] · [[Architecture.md]]
+
+Документ описывает JSON-RPC контракт отправки пачки операций расположения сущностей на бекенд. Вызывается **только из EntityManager** при flush (таймер ~1 с или barrier). Инвентарь / мир / UI / CharacterStateManager этот RPC не вызывают.
+
+Очередь, lock на in-flight, barrier: [[EntityManager.Operations.md]].  
+`resetGeneration` и `StaleAfterReset`: [[EntityManager.DupeAnalyzer.md]].  
+Транспорт и примеры: [[../api/http api.md]].
+
+```text
+Game EM flush → Lock uids → entity@applyOperations(operations[]) → per-op Ok/Fail → Unlock / rollback
+```
+
+---
+
+## applyOperations
+
+**JSON-RPC `method`:** `"entity@applyOperations"`
+
+**Сигнатура**
+
+```text
+applyOperations(operations[]): ApplyEntityOperationsResult
+```
+
+**Аргументы**
+
+- `operations: EntityOperation[]` — непустой упорядоченный список операций. Порядок в массиве = порядок применения на бекенде.
+
+### Элемент `EntityOperation`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `entityUid` | string | Идентификатор сущности |
+| `type` | string | Тип операции (см. каталог ниже) |
+| `resetGeneration` | int | Поколение сущности на момент отправки |
+| `characterUid` | string | Персонаж-инициатор (как в `enqueue*`) |
+| `payload` | object | Поля, зависящие от `type` |
+
+### Каталог `type`
+
+| `type` | Смысл |
+|--------|--------|
+| `PickUpEntity` | из мира → контейнер / слот |
+| `DropEntity` | из инвентаря / слота → мир |
+| `MoveEntity` | между слотами / контейнерами |
+| `EquipItem` | надеть |
+| `UnequipItem` | снять |
+| `SwapEquipment` | обмен слотов |
+| `TransferEntity` | передача другому персонажу |
+| `SplitStack` | разделение стека (если есть в проекте) |
+| `MergeStack` | слияние стеков (если есть в проекте) |
+| `DestroyEntity` | уничтожение / снятие с реестра (поля `payload` уточняются отдельно) |
+
+### `payload` по типам
+
+**`PickUpEntity` / `MoveEntity`**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `targetContainerUid` | string | Контейнер назначения |
+| `slot` | string \| null | Слот назначения, если нужен контракту |
+
+**`DropEntity`**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `position` | object | Координаты дропа: `{ x: number, y: number, z: number }` |
+
+**`TransferEntity`**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `toCharacterUid` | string | Получатель |
+| `targetContainerUid` | string \| null | Контейнер назначения у получателя, если нужен |
+| `slot` | string \| null | Слот назначения, если нужен |
+
+**`EquipItem` / `UnequipItem` / `SwapEquipment` / `SplitStack` / `MergeStack`**
+
+Поля `payload` — по доменным правилам экипировки и стеков; должны однозначно задавать целевое расположение. Каталог смыслов: [[EntityManager.md#каталог-операций-расположения-игра--бекенд]].
+
+**`DestroyEntity`**
+
+Контракт `payload` уточняется отдельно (минимум достаточно `entityUid` + `resetGeneration` на уровне ops).
+
+### Описание
+
+1. EntityManager при flush собирает pending ops в пачку с сохранением порядка и вызывает этот метод.
+2. Бекенд применяет операции **по порядку** в `operations`.
+3. В рамках одного `entityUid` — строго последовательно. Если ранняя ops по uid дала `Fail`, последующие ops того же uid в этой пачке получают `Fail` без применения.
+4. Пачка **не** атомарна по всем uid: отказ по uid A не откатывает уже применённые ops по uid B.
+5. Второй одновременный успешный take одной сущности → `AlreadyTaken`.
+6. Если `op.resetGeneration` не совпадает с текущим поколением сущности на бекенде → `StaleAfterReset`, мир по этой ops не двигать ([[EntityManager.DupeAnalyzer.md]]).
+7. Этот RPC обновляет истину владения / контейнера / позиции на бекенде. Мутации игрового мира с бекенда (спавн, `removeEntity` и т.п.) — через CommandBus ([[BackendGameMutation.md]]), не вместо этого метода.
+
+### Результат (`ApplyEntityOperationsResult`)
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `status` | string | `Ok` — пачка обработана (в т.ч. с частичными Fail по ops); `Fail` — отказ на уровне запроса |
+| `failReason` | string \| null | При request-level Fail — причина; иначе `null` |
+| `operationResults` | EntityOperationResult[] \| null | При `Ok`: массив той же длины и порядка, что `operations`; при request Fail — `null` |
+
+Элемент `operationResults[]` (`EntityOperationResult`):
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `status` | string | `Ok` или `Fail` |
+| `failReason` | string \| null | При Fail — причина; при Ok — `null` |
+
+Индексация **1:1** с входным `operations[]` (без дублирования `entityUid` в результате — идентификация по индексу).
+
+Игровой сервер по индексам откатывает оптимизм только для упавших ops и снимает lock затронутых uid ([[EntityManager.Operations.md]]).
+
+### Причины отказа на уровне запроса (`failReason`)
+
+- `EmptyOperations` — массив `operations` пуст.
+- `InvalidParams` — невалидная структура params / элемента ops до доменной обработки.
+
+### Причины отказа на уровне операции (`operationResults[].failReason`)
+
+- `EntityNotFound` — сущность не найдена на бекенде.
+- `StaleAfterReset` — устаревшее `resetGeneration` после hard-reset.
+- `ContainerNotFound` — целевой контейнер не найден.
+- `InvalidLocation` — недопустимое целевое расположение / слот.
+- `AlreadyTaken` — сущность уже забрана / конфликт владения (второй take).
+- `InvalidOperation` — прочая доменная недопустимость операции.
+
+---
+
+## Примеры
+
+### Запрос — Drop затем PickUp одной банки
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@applyOperations",
+  "params": {
+    "operations": [
+      {
+        "entityUid": "ent-can-001",
+        "type": "DropEntity",
+        "resetGeneration": 0,
+        "characterUid": "char-p1",
+        "payload": {
+          "position": { "x": 100.5, "y": 12.0, "z": -40.25 }
+        }
+      },
+      {
+        "entityUid": "ent-can-001",
+        "type": "PickUpEntity",
+        "resetGeneration": 0,
+        "characterUid": "char-p2",
+        "payload": {
+          "targetContainerUid": "cont-inv-p2",
+          "slot": null
+        }
+      }
+    ]
+  },
+  "id": 42
+}
+```
+
+### Ответ — обе ops Ok
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Ok", "failReason": null },
+      { "status": "Ok", "failReason": null }
+    ]
+  },
+  "id": 42
+}
+```
+
+### Ответ — частичный успех (вторая ops AlreadyTaken)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Ok", "failReason": null },
+      { "status": "Fail", "failReason": "AlreadyTaken" }
+    ]
+  },
+  "id": 42
+}
+```
+
+### Ответ — StaleAfterReset
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Fail", "failReason": "StaleAfterReset" }
+    ]
+  },
+  "id": 42
+}
+```
+
+### Ответ — отказ на уровне запроса (пустая пачка)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "EmptyOperations",
+    "operationResults": null
+  },
+  "id": 42
+}
+```
+
+---
+
+## Связанные документы
+
+- [[EntityManager.md]] — реестр и `enqueue*`
+- [[EntityManager.Operations.md]] — очередь, flush, in-flight
+- [[EntityManager.DupeAnalyzer.md]] — `resetGeneration`, hard-reset
+- [[EntityLockRegistry.md]] — Lock на время in-flight
+- [[BackendGameMutation.md]] — бекенд → CommandBus → мир
+- [[../api/http api.md]] — транспорт JSON-RPC
+- [[../ArchBackend/ArchBackend.md]] — EntityService
+- [[../ArchBackend/ServiceAndApiLayers.md]] — Service vs API

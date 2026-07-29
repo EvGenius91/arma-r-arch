@@ -23,7 +23,7 @@
 ```text
 enqueue* → проверки → локальный оптимизм → запись в очередь (без Lock)
          → flush: ~1 с  ИЛИ  barrier
-         → Lock затронутых uid → пачка на бекенд (порядок сохранён) → in-flight
+         → Lock затронутых uid → entity@applyOperations (порядок сохранён) → in-flight
          → Ok / Fail → Unlock → при необходимости следующая пачка по uid
 ```
 
@@ -86,7 +86,7 @@ Trade перед `sell`: при необходимости barrier/flush по ui
 4. Поставить операцию в исходящую очередь (с resetGeneration) — без Lock
 5. Flush (таймер ~1 с или barrier):
    Lock затронутых uid (+ родитель ContainerDispose по политике)
-   отправить пачку на бекенд с сохранением порядка
+   отправить пачку через `entity@applyOperations` с сохранением порядка
 6. Ответ по uid / ops:
    Ok  → Unlock, зафиксировать связи, событие в Local EventBus
    Fail → откат локального оптимизма, Unlock, событие / сигнал UI
@@ -107,7 +107,7 @@ sequenceDiagram
     EM->>Q: Drop_в_очередь
     Note over Q: ждём_таймер_или_barrier
     EM->>Lock: Lock_банка
-    EM->>BE: пачка_с_порядком
+    EM->>BE: entity@applyOperations
     alt Ok
         BE-->>EM: Ok
         EM->>Lock: Unlock_банка
@@ -185,8 +185,11 @@ EntityManager **не** ждёт второй вызов CharacterStateManager д
 entityUid
 type                    // PickUpEntity | DropEntity | MoveEntity | …
 resetGeneration         // поколение сущности на момент отправки
+characterUid            // инициатор
 payload                 // containerUid, slot, position, toCharacterUid, …
 ```
+
+**RPC:** `entity@applyOperations` — пачка `operations[]` при flush. Полный контракт JSON-RPC: [[EntityManager.HttpMethods.md]], транспорт: [[../api/http api.md]].
 
 Бекенд применяет ops **с сохранением порядка** в рамках uid. Второй одновременный успешный take одной банки на бекенде не допускается (второй → Fail) — на игровом сервере это закрывается очередью + lock на in-flight.
 
@@ -255,10 +258,12 @@ payload                 // containerUid, slot, position, toCharacterUid, …
 ## Связанные документы
 
 - [[EntityManager.md]] — реестр и обзор
+- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@applyOperations`
 - [[EntityLockRegistry.md]] — общий сервис блокировок
 - [[EntityManager.DupeAnalyzer.md]] — дюпы, hard-reset, `resetGeneration`
 - [[TradeManager.md]] — sell и SellPending
 - [[BackendGameMutation.md]] — бекенд → CommandBus → мир
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа без дерева лута
+- [[../api/http api.md]] — транспорт HTTP JSON-RPC
 - [[../CommandBus/CommandBus.md]] — доставка команд
 - [[../CommandBus/Commands.md]] — каталог команд
