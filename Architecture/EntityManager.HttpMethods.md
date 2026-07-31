@@ -1,15 +1,118 @@
 # HTTP-методы EntityManager (игра → бекенд)
 
-Назад: [[EntityManager.md]] · [[EntityManager.Operations.md]] · [[Architecture.md]]
+Назад: [[EntityManager.md]] · [[EntityManager.Operations.md]] · [[EntityManager.Entities.md]] · [[Architecture.md]]
 
-Документ описывает JSON-RPC контракт отправки пачки операций расположения сущностей на бекенд. Вызывается **только из EntityManager** при flush (таймер ~1 с или barrier). Инвентарь / мир / UI / CharacterStateManager этот RPC не вызывают.
+Документ описывает JSON-RPC контракты EntityManager / `EntityRegistryService` на бекенде:
+
+- чтение инвентаря персонажа — [[#getInventoryByCharacterUid]];
+- отправка пачки операций расположения при flush — [[#applyOperations]] (таймер ~1 с или barrier; вызывается **только из EntityManager**; инвентарь / мир / UI / CharacterStateManager этот RPC не вызывают).
 
 Очередь, lock на in-flight, barrier: [[EntityManager.Operations.md]].  
 `resetGeneration` и `StaleAfterReset`: [[EntityManager.DupeAnalyzer.md]].  
+Сущности результата: [[EntityManager.Entities.md]].  
 Транспорт и примеры: [[../api/http api.md]].
 
 ```text
 Game EM flush → Lock uids → entity@applyOperations(operations[]) → per-op Ok/Fail → Unlock / rollback
+```
+
+---
+
+## getInventoryByCharacterUid
+
+**JSON-RPC `method`:** `"entity@getInventoryByCharacterUid"`
+
+**Сигнатура**
+
+```text
+getInventoryByCharacterUid(string characterUid): GetInventoryByCharacterUidResult
+```
+
+Доменный сервис (`EntityRegistryServiceInterface`):
+
+```text
+getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
+```
+
+**Аргументы**
+
+- `characterUid: string` — персонаж, чей инвентарь / носимый набор запрашивается.
+
+**Описание**
+
+1. По `characterUid` бекенд возвращает **плоский** список сущностей из реестра, принадлежащих инвентарю персонажа (включая контейнеры и вложенные предметы).
+2. Это не агрегат Trade (`getInventoryForSell`) и не дерево: вложенность клиент восстанавливает по `parentContainerUid` / `inventorySlotUid`.
+3. Пустой список — штатный успех (у персонажа нет сущностей в инвентаре), не ошибка.
+4. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `GetInventoryByCharacterUidResult` со `status = Ok`.
+
+**Результат**
+
+[[EntityManager.Entities.md#GetInventoryByCharacterUidResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]].
+
+**Причины отказа**
+
+Нет. Доменный Fail / enum причин для этого метода не предусмотрены.
+
+### Примеры
+
+**Запрос**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@getInventoryByCharacterUid",
+  "params": {
+    "characterUid": "char-42"
+  },
+  "id": 1
+}
+```
+
+**Ответ — успех (контейнер и предмет внутри)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": [
+      {
+        "uid": "ent-backpack-1",
+        "prefabName": "Backpack_01",
+        "isContainer": true,
+        "position": null,
+        "parentContainerUid": null,
+        "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42"
+      },
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
+        "ownerCharacterUid": "char-42"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Ответ — успех (пустой инвентарь)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": []
+  },
+  "id": 1
+}
 ```
 
 ---
@@ -233,10 +336,11 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 ## Связанные документы
 
 - [[EntityManager.md]] — реестр и `enqueue*`
+- [[EntityManager.Entities.md]] — `EntityItem`, `GetInventoryByCharacterUidResult`
 - [[EntityManager.Operations.md]] — очередь, flush, in-flight
 - [[EntityManager.DupeAnalyzer.md]] — `resetGeneration`, hard-reset
 - [[EntityLockRegistry.md]] — Lock на время in-flight
 - [[BackendGameMutation.md]] — бекенд → CommandBus → мир
 - [[../api/http api.md]] — транспорт JSON-RPC
-- [[../ArchBackend/ArchBackend.md]] — EntityService
+- [[../ArchBackend/ArchBackend.md]] — EntityRegistryService
 - [[../ArchBackend/ServiceAndApiLayers.md]] — Service vs API

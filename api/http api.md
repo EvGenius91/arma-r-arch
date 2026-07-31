@@ -1320,6 +1320,98 @@
 }
 ```
 
+### getInventoryByCharacterUid
+
+Возвращает плоский список сущностей инвентаря / носимого набора персонажа по `characterUid`. Не агрегат Trade (`getInventoryForSell`): вложенность — через `parentContainerUid` / `inventorySlotUid`. Пустой список — успех. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md#getinventorybycharacteruid), сущности: [Architecture/EntityManager.Entities.md](../Architecture/EntityManager.Entities.md).
+
+**`method`:** `"entity@getInventoryByCharacterUid"`
+
+**`params`**
+
+| Поле           | Тип    | Описание                |
+| -------------- | ------ | ----------------------- |
+| `characterUid` | string | Идентификатор персонажа |
+
+**`result` (`GetInventoryByCharacterUidResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); для этого метода — `"Ok"`   |
+| `failReason` | string \| null | При `Ok` — `null`; доменных Fail нет                                     |
+| `entities`   | array \| null  | При `Ok`: массив `EntityItem` (может быть пустым); при `Fail` — `null`   |
+
+Элемент `entities` (`EntityItem`):
+
+| Поле                 | Тип            | Описание                                      |
+| -------------------- | -------------- | --------------------------------------------- |
+| `uid`                | string         | Идентификатор сущности                        |
+| `prefabName`         | string         | Имя префаба                                   |
+| `isContainer`        | boolean        | Признак контейнера                            |
+| `position`           | object \| null | Координаты в мире `{ x, y, z }` или `null`    |
+| `parentContainerUid` | string \| null | Родительский контейнер                        |
+| `inventorySlotUid`   | string \| null | Слот инвентаря / экипировки                   |
+| `ownerCharacterUid`  | string \| null | Персонаж-владелец                             |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@getInventoryByCharacterUid",
+  "params": {
+    "characterUid": "char-42"
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": [
+      {
+        "uid": "ent-backpack-1",
+        "prefabName": "Backpack_01",
+        "isContainer": true,
+        "position": null,
+        "parentContainerUid": null,
+        "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42"
+      },
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
+        "ownerCharacterUid": "char-42"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех (пустой инвентарь)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": []
+  },
+  "id": 1
+}
+```
+
 ### applyOperations (EntityManager)
 
 Принимает упорядоченную пачку операций расположения сущностей от EntityManager при flush. Вызывается только с игрового сервера (не из UI / CSM). Пачка не атомарна по всем `entityUid`; успех/отказ — по каждой ops. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md), очередь: [Architecture/EntityManager.Operations.md](../Architecture/EntityManager.Operations.md).

@@ -39,8 +39,9 @@
 Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. **Зависит от EntityLockRegistry.**
 
 - [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue*
+- [[EntityManager.Entities.md]] — `EntityItem`, `GetInventoryByCharacterUidResult`
 - [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
-- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@applyOperations` (пачка ops на бекенд)
+- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций
 
 ## CharacterStateManager

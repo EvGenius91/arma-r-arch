@@ -169,7 +169,7 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 
 ## Каталог операций расположения (игра → бекенд)
 
-Контракт бекенда. На игровом сервере им соответствуют методы EntityManager; вызывающий код (инвентарь / мир) **не** ходит в CSM. HTTP-пачка при flush: [[EntityManager.HttpMethods.md|entity@applyOperations]].
+Контракт бекенда (`EntityRegistryService`). На игровом сервере им соответствуют методы EntityManager; вызывающий код (инвентарь / мир) **не** ходит в CSM. Чтение инвентаря: [[EntityManager.HttpMethods.md#getInventoryByCharacterUid|entity@getInventoryByCharacterUid]]. HTTP-пачка при flush: [[EntityManager.HttpMethods.md|entity@applyOperations]].
 
 | Операция (бек) | Смысл |
 |----------------|--------|
@@ -292,8 +292,9 @@ Ok → снять все lock’и этой операции. Fail → отка�
 - [[Architecture.md]] — оглавление архитектуры менеджеров
 - [[BackendGameMutation.md]] — принцип применения изменений мира через CommandBus
 - [[EntityLockRegistry.md]] — общий реестр блокировок (EntityManager + Trade)
+- [[EntityManager.Entities.md]] — сущности реестра и результат `getInventoryByCharacterUid`
 - [[EntityManager.Operations.md]] — логика операций и очередь
-- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@applyOperations`
+- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, игнор операций
 - [[TradeManager.md]] — sell и Lock на время продажи
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа; инвентарь только как проекция
