@@ -44,6 +44,7 @@ getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
 2. Это не агрегат Trade (`getInventoryForSell`) и не дерево: вложенность клиент восстанавливает по `parentContainerUid` / `inventorySlotUid`.
 3. Пустой список — штатный успех (у персонажа нет сущностей в инвентаре), не ошибка.
 4. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `GetInventoryByCharacterUidResult` со `status = Ok`.
+5. На игровом сервере при спавне / респавне вызывающий — [[EntityManager.md#loadInventory|EntityManager.loadInventory]]: он запрашивает этот RPC и материализует сущности на новом персонаже.
 
 **Результат**
 

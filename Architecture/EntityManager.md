@@ -24,6 +24,7 @@ EntityManager является реестром игровых сущносте�
 - выдачу и сохранение `uid` сущности;
 - хранение текущего положения сущности: в мире, у игрока или внутри контейнера / в слоте;
 - **синхронизацию с бекендом** изменений владения и расположения (подбор, дроп, move, экипировка, передача);
+- заполнение инвентаря нового персонажа при спавне (`loadInventory`);
 - вызов [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight пачки (блок / разблок uid);
 - обновление связей при изменении инвентаря;
 - регистрацию удаления сущности;
@@ -187,6 +188,45 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 ---
 
 ## Методы
+
+### loadInventory
+
+**Сигнатура:**
+
+```text
+loadInventory(string characterUid): void
+```
+
+**Параметры:**
+
+- `characterUid` — персонаж, чей инвентарь нужно загрузить и материализовать в мире.
+
+**Когда вызывается:**
+
+После создания нового персонажа в мире — респавн после подключения, возрождение после гибели.
+
+```text
+Спавн нового персонажа (респавн после подключения / возрождение после гибели)
+  → EntityManager.loadInventory(characterUid)
+```
+
+**Описание:**
+
+1. Сам запрашивает инвентарь с бекенда через [[EntityManager.HttpMethods.md#getInventoryByCharacterUid|entity@getInventoryByCharacterUid]].
+2. По плоскому списку `EntityItem` создаёт/привязывает сущности к персонажу в мире: `prefabName`, стабильный `entityUid`, контейнер/слот; вложенность восстанавливает по `parentContainerUid` / `inventorySlotUid`.
+3. Обновляет локальный реестр EntityManager.
+
+Новый персонаж пустой: `loadInventory` заполняет его снимком с бекенда. Union / merge двух текущих списков инвентаря **запрещён**.
+
+**Чего не делает:**
+
+- не шлёт `applyOperations` / `enqueue*` (это не синк игра → бекенд);
+- не является горячим путём после buy/sell / `CharacterStateChanged`;
+- не подменяет CommandBus для выдачи **новых** предметов во время игры (`addNewEntityToCharacterInventory`).
+
+Заполнение мира предметами при спавне — только `loadInventory`.
+
+---
 
 ### enqueueDropEntity
 

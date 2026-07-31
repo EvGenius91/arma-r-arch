@@ -36,9 +36,9 @@
 
 ## EntityManager
 
-Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. **Зависит от EntityLockRegistry.**
+Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. При спавне / респавне заполняет инвентарь нового персонажа через `loadInventory`. **Зависит от EntityLockRegistry.**
 
-- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, enqueue*
+- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, `loadInventory`, enqueue*
 - [[EntityManager.Entities.md]] — `EntityItem`, `GetInventoryByCharacterUidResult`
 - [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
 - [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@applyOperations`
