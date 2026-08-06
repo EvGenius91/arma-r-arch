@@ -213,7 +213,7 @@ loadInventory(string characterUid): void
 **Описание:**
 
 1. Сам запрашивает инвентарь с бекенда через [[EntityManager.HttpMethods.md#getInventoryByCharacterUid|entity@getInventoryByCharacterUid]].
-2. По плоскому списку `EntityItem` создаёт/привязывает сущности к персонажу в мире: `prefabName`, стабильный `entityUid`, контейнер/слот; вложенность восстанавливает по `parentContainerUid` / `inventorySlotUid`.
+2. По плоскому списку `EntityItem` создаёт/привязывает сущности к персонажу в мире: `prefabName`, стабильный `entityUid`, контейнер/слот, `storageType`; вложенность восстанавливает по `parentContainerUid` / `inventorySlotUid`.
 3. Обновляет локальный реестр EntityManager.
 
 Новый персонаж пустой: `loadInventory` заполняет его снимком с бекенда. Union / merge двух текущих списков инвентаря **запрещён**.
@@ -233,14 +233,15 @@ loadInventory(string characterUid): void
 **Сигнатура:**
 
 ```text
-enqueueDropEntity(string entityUid, vector position, string characterUid): void
+enqueueDropEntity(string entityUid, vector position, string characterUid, StorageTypeEnum storageType): void
 ```
 
 **Параметры:**
 
 - `entityUid` — идентификатор сущности, которую выбрасывают в мир;
 - `position` — координаты дропа в мире;
-- `characterUid` — персонаж, инициировавший дроп.
+- `characterUid` — персонаж, инициировавший дроп;
+- `storageType` — тип хранилища ([[EntityManager.Entities.md#StorageTypeEnum]]), уходит в `payload` операции.
 
 **Описание:**
 
@@ -258,7 +259,7 @@ enqueueDropEntity(string entityUid, vector position, string characterUid): void
 **Сигнатура:**
 
 ```text
-enqueuePickupEntity(string entityUid, string targetContainerUid, string characterUid, string slot?): void
+enqueuePickupEntity(string entityUid, string targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
 ```
 
 **Параметры:**
@@ -266,6 +267,7 @@ enqueuePickupEntity(string entityUid, string targetContainerUid, string characte
 - `entityUid` — идентификатор подбираемой сущности;
 - `targetContainerUid` — контейнер / слот назначения (инвентарь персонажа, рюкзак и т.п.);
 - `characterUid` — персонаж, который подбирает;
+- `storageType` — тип хранилища назначения ([[EntityManager.Entities.md#StorageTypeEnum]]);
 - `slot` — слот назначения, если нужен контракту.
 
 **Описание:**
@@ -284,7 +286,7 @@ Ok → `Unlock`. Fail → откат в предыдущее расположе�
 **Сигнатура:**
 
 ```text
-enqueueMoveEntity(string entityUid, string targetContainerUid, string characterUid, string slot?): void
+enqueueMoveEntity(string entityUid, string targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
 ```
 
 **Параметры:**
@@ -292,6 +294,7 @@ enqueueMoveEntity(string entityUid, string targetContainerUid, string characterU
 - `entityUid` — перемещаемая сущность;
 - `targetContainerUid` — контейнер назначения;
 - `characterUid` — персонаж, инициировавший перемещение;
+- `storageType` — тип хранилища назначения ([[EntityManager.Entities.md#StorageTypeEnum]]);
 - `slot` — слот назначения, если нужен.
 
 **Описание:**

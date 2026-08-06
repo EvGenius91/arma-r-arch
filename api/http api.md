@@ -1351,6 +1351,7 @@
 | `parentContainerUid` | string \| null | Родительский контейнер                        |
 | `inventorySlotUid`   | string \| null | Слот инвентаря / экипировки                   |
 | `ownerCharacterUid`  | string \| null | Персонаж-владелец                             |
+| `storageType`        | string         | Тип хранилища (`StorageTypeEnum`, не null)    |
 
 **Пример запроса**
 
@@ -1381,7 +1382,8 @@
         "position": null,
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
-        "ownerCharacterUid": "char-42"
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
       },
       {
         "uid": "ent-can-001",
@@ -1390,7 +1392,8 @@
         "position": null,
         "parentContainerUid": "ent-backpack-1",
         "inventorySlotUid": null,
-        "ownerCharacterUid": "char-42"
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
       }
     ]
   },
@@ -1434,13 +1437,13 @@
 | `characterUid`    | string | Персонаж-инициатор                                                       |
 | `payload`         | object | Поля по `type` (см. ниже)                                                |
 
-`payload` для основных типов:
+`payload` для основных типов (везде обязателен `storageType`: `SCR_CharacterInventoryStorageComponent` \| `SCR_WeaponAttachmentsStorageComponent` \| `EquipedWeaponStorageComponent`):
 
 | `type` | Поля `payload` |
 | ------ | -------------- |
-| `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string), `slot` (string \| null) |
-| `DropEntity` | `position` `{ x, y, z }` (числа) |
-| `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null) |
+| `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string), `slot` (string \| null), `storageType` (string) |
+| `DropEntity` | `position` `{ x, y, z }` (числа), `storageType` (string) |
+| `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null), `storageType` (string) |
 
 Остальные типы — см. [EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md).
 
@@ -1475,7 +1478,8 @@
         "resetGeneration": 0,
         "characterUid": "char-p1",
         "payload": {
-          "position": { "x": 100.5, "y": 12.0, "z": -40.25 }
+          "position": { "x": 100.5, "y": 12.0, "z": -40.25 },
+          "storageType": "SCR_CharacterInventoryStorageComponent"
         }
       },
       {
@@ -1485,7 +1489,8 @@
         "characterUid": "char-p2",
         "payload": {
           "targetContainerUid": "cont-inv-p2",
-          "slot": null
+          "slot": null,
+          "storageType": "SCR_CharacterInventoryStorageComponent"
         }
       }
     ]

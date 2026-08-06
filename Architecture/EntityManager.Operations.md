@@ -61,9 +61,9 @@ Barrier **скоупается** по смыслу события: открыт�
 Системы мира вызывают `enqueue*` — **одна операция, локальный оптимизм + постановка в очередь**. Снаружи не собирают пачки и не знают про HTTP.
 
 ```text
-enqueuePickupEntity(entityUid, targetContainerUid, characterUid, slot?)
-enqueueDropEntity(entityUid, position, characterUid)
-enqueueMoveEntity(entityUid, targetContainerUid, characterUid, slot?)
+enqueuePickupEntity(entityUid, targetContainerUid, characterUid, storageType, slot?)
+enqueueDropEntity(entityUid, position, characterUid, storageType)
+enqueueMoveEntity(entityUid, targetContainerUid, characterUid, storageType, slot?)
 // далее по тому же шаблону:
 // enqueueEquipItem / enqueueTransferEntity / …
 ```
@@ -186,7 +186,7 @@ entityUid
 type                    // PickUpEntity | DropEntity | MoveEntity | …
 resetGeneration         // поколение сущности на момент отправки
 characterUid            // инициатор
-payload                 // containerUid, slot, position, toCharacterUid, …
+payload                 // storageType (обязателен), containerUid, slot, position, toCharacterUid, …
 ```
 
 **RPC:** `entity@applyOperations` — пачка `operations[]` при flush. Полный контракт JSON-RPC: [[EntityManager.HttpMethods.md]], транспорт: [[../api/http api.md]].

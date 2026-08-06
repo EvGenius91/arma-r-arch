@@ -85,7 +85,8 @@ getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
         "position": null,
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
-        "ownerCharacterUid": "char-42"
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
       },
       {
         "uid": "ent-can-001",
@@ -94,7 +95,8 @@ getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
         "position": null,
         "parentContainerUid": "ent-backpack-1",
         "inventorySlotUid": null,
-        "ownerCharacterUid": "char-42"
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
       }
     ]
   },
@@ -159,18 +161,26 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 ### `payload` по типам
 
+Общее обязательное поле `payload` для операций расположения (в т.ч. PickUp / Move / Drop):
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `storageType` | string | Тип хранилища ([[EntityManager.Entities.md#StorageTypeEnum]]): `SCR_CharacterInventoryStorageComponent`, `SCR_WeaponAttachmentsStorageComponent`, `EquipedWeaponStorageComponent` |
+
 **`PickUpEntity` / `MoveEntity`**
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `targetContainerUid` | string | Контейнер назначения |
 | `slot` | string \| null | Слот назначения, если нужен контракту |
+| `storageType` | string | Тип хранилища назначения (обязателен) |
 
 **`DropEntity`**
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `position` | object | Координаты дропа: `{ x: number, y: number, z: number }` |
+| `storageType` | string | Тип хранилища (обязателен) |
 
 **`TransferEntity`**
 
@@ -179,6 +189,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 | `toCharacterUid` | string | Получатель |
 | `targetContainerUid` | string \| null | Контейнер назначения у получателя, если нужен |
 | `slot` | string \| null | Слот назначения, если нужен |
+| `storageType` | string | Тип хранилища назначения (обязателен) |
 
 **`EquipItem` / `UnequipItem` / `SwapEquipment` / `SplitStack` / `MergeStack`**
 
@@ -249,7 +260,8 @@ applyOperations(operations[]): ApplyEntityOperationsResult
         "resetGeneration": 0,
         "characterUid": "char-p1",
         "payload": {
-          "position": { "x": 100.5, "y": 12.0, "z": -40.25 }
+          "position": { "x": 100.5, "y": 12.0, "z": -40.25 },
+          "storageType": "SCR_CharacterInventoryStorageComponent"
         }
       },
       {
@@ -259,7 +271,8 @@ applyOperations(operations[]): ApplyEntityOperationsResult
         "characterUid": "char-p2",
         "payload": {
           "targetContainerUid": "cont-inv-p2",
-          "slot": null
+          "slot": null,
+          "storageType": "SCR_CharacterInventoryStorageComponent"
         }
       }
     ]

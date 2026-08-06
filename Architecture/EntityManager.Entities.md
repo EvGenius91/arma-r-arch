@@ -2,7 +2,30 @@
 
 Назад: [[EntityManager.md]] · [[EntityManager.HttpMethods.md]]
 
-Доменный контракт бекенда: `EntityRegistryService` (`Contracts/EntityRegistryService/`), DTO `EntityItemDto` / `PositionDto`.
+Доменный контракт бекенда: `EntityRegistryService` (`Contracts/EntityRegistryService/`), DTO `EntityItemDto` / `PositionDto`, enum `StorageTypeEnum`.
+
+### StorageTypeEnum
+
+**Сигнатура**
+```
+enum StorageTypeEnum
+{
+	SCR_CharacterInventoryStorageComponent;
+	SCR_WeaponAttachmentsStorageComponent;
+	EquipedWeaponStorageComponent;
+}
+```
+
+**Назначение**
+Тип хранилища сущности (компонент инвентаря / экипировки в мире). Соответствует `StorageTypeEnum` на бекенде. Обязателен в `EntityItem` и в `payload` операций расположения (`applyOperations`).
+
+**Значения**
+- `SCR_CharacterInventoryStorageComponent` — хранилище инвентаря персонажа.
+- `SCR_WeaponAttachmentsStorageComponent` — хранилище вложений оружия.
+- `EquipedWeaponStorageComponent` — хранилище экипированного оружия.
+
+**Используется в**
+[[#EntityItem]], [[EntityManager.HttpMethods.md#applyOperations]]
 
 ### Position
 
@@ -40,6 +63,7 @@ class EntityItem
 	string parentContainerUid;
 	string inventorySlotUid;
 	string ownerCharacterUid;
+	StorageTypeEnum storageType;
 }
 ```
 
@@ -54,11 +78,12 @@ class EntityItem
 - `parentContainerUid: string|null` - идентификатор родительского контейнера; `null`, если нет родителя-контейнера.
 - `inventorySlotUid: string|null` - идентификатор слота инвентаря / экипировки; `null`, если слот не задан.
 - `ownerCharacterUid: string|null` - идентификатор персонажа-владельца; `null`, если владелец не задан.
+- `storageType: StorageTypeEnum` - тип хранилища сущности (не null).
 
 Вложенность восстанавливается по `parentContainerUid` и `inventorySlotUid` (ответ метода — плоский список, не дерево).
 
 **Связано**
-[[#Position]]
+[[#Position]], [[#StorageTypeEnum]]
 
 **Используется в**
 [[#GetInventoryByCharacterUidResult]]
