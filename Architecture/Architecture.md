@@ -51,8 +51,14 @@
 - [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций
 
-## CharacterStateManager
+## CharacterStateManager (на согласовании)
 
-Синхронизация состояния персонажа (здоровье, витальность, позиция, проекции). Инвентарь в снимке — проекция из EntityManager.
+Синхронизация состояния персонажа (здоровье, витальность, позиция, проекции). Инвентарь в снимке — проекция из EntityManager. Описание черновое: сервис на согласовании.
 
 - [[CharacterStateManager (черновик) 3.md]] — операции персонажа, `applyOperations`, recovery
+
+## LootSpawnManager (на согласовании)
+
+Спавн лута у лутабельных объектов; регистрация сущностей через EntityManager, появление в мире через CommandBus `SpawnEntity`. Контракт сервиса на согласовании.
+
+- упоминание потока: [[EntityManager.md]] (секция «Спавн лута»)
