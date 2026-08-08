@@ -28,7 +28,7 @@ EntityManager является реестром игровых сущносте�
 - вызов [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight пачки (блок / разблок uid);
 - обновление связей при изменении инвентаря;
 - регистрацию удаления сущности;
-- постановку команд в CommandBus, когда изменение должно быть применено в игровом мире (путь бекенд → мир).
+- приём команд с [[../CommandBus/CommandBus.md|CommandBus]] через `enqueueCommand` (путь бекенд → мир) и обязательный отчёт через `CommandBus::reportCommands`.
 
 Бекенд остается источником истины по состоянию сущностей. Игровой сервер применяет решения бекенда в мире отдельным шагом через CommandBus. Подробнее: [[BackendGameMutation.md]].
 
@@ -51,26 +51,26 @@ EntityManager является реестром игровых сущносте�
 
 Спавн лута начинается на стороне игрового сервера. Когда игрок подходит к зданию или другому лутабельному объекту, внутриигровой `LootSpawnManager` определяет, какие предметы должны появиться и в каких позициях.
 
-`LootSpawnManager` отправляет в EntityManager запрос со списком элементов и координатами `x`, `y`, `z`. EntityManager регистрирует эти элементы в БД, назначает каждому элементу `uid` и отправляет в игровую командную шину команды на спавн.
-
-После этого CommandBus доставляет команды игровому серверу. Игровой сервер создает предметы в указанных позициях и присваивает им полученные `uid`.
+`LootSpawnManager` отправляет в EntityManager запрос со списком элементов и координатами `x`, `y`, `z`. EntityManager регистрирует эти элементы на бекенде и назначает каждому `uid`. Бекенд ставит в очередь команды `SpawnEntity`; [[../CommandBus/CommandBus.md|CommandBus]] доставляет их в EntityManager (`enqueueCommand`), который спавнит сущности в мире и отвечает через `CommandBus::reportCommands`.
 
 ```mermaid
 sequenceDiagram
     participant Player as Игрок
     participant Loot as LootSpawnManager
     participant Entity as EntityManager
-    participant DB as БД
+    participant BE as Бекенд
     participant CB as CommandBus
     participant World as Игровой_мир
 
     Player->>Loot: подходит_к_лутабельному_объекту
     Loot->>Entity: запрос_спавна_items_positions
-    Entity->>DB: регистрация_сущностей
-    DB-->>Entity: uid_для_сущностей
-    Entity->>CB: команды_спавна_uid_prefab_position
-    CB->>World: создать_сущности_в_мире
-    World-->>CB: отчет_о_выполнении
+    Entity->>BE: регистрация_сущностей
+    BE-->>Entity: uid_для_сущностей
+    BE->>CB: SpawnEntity_в_очереди
+    CB->>Entity: enqueueCommand_SpawnEntity
+    Entity->>World: создать_сущности_в_мире
+    Entity->>CB: reportCommands
+    CB->>BE: отчет_о_выполнении
 ```
 
 ---
@@ -190,6 +190,32 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 
 ## Методы
 
+### enqueueCommand
+
+**Сигнатура:**
+
+```text
+enqueueCommand(command): void
+```
+
+**Параметры:**
+
+- `command` — команда CommandBus, назначенная EntityManager (`SpawnEntity`, `removeEntity`, `removeVehicle` и т.п.; см. [[../CommandBus/Commands.md]]).
+
+**Когда вызывается:**
+
+[[../CommandBus/CommandBus.md|CommandBus]] после получения пачки с бекенда маршрутизирует команды сущностей в EntityManager.
+
+**Описание:**
+
+1. Принимает команды, назначенные EntityManager, и ставит их в очередь на выполнение.
+2. Для `SpawnEntity`: одним запросом получает данные сущностей ([[EntityManager.HttpMethods.md#findEntitiesByUidList|entity@findEntitiesByUidList]]) и спавнит их в мире.
+3. После выполнения **обязан** вызвать [[../CommandBus/CommandBus.md#reportcommands|CommandBus::reportCommands]] со статусом по каждой команде: `Completed` или `Fail` (+ `FailReason`).
+
+Это канал **бекенд → мир**. Не путать с `enqueuePickupEntity` / `enqueueDropEntity` / `enqueueMoveEntity` (синк **игра → бекенд**).
+
+---
+
 ### loadInventory
 
 **Сигнатура:**
@@ -223,9 +249,9 @@ loadInventory(string characterUid): void
 
 - не шлёт `applyOperations` / `enqueue*` (это не синк игра → бекенд);
 - не является горячим путём после buy/sell / `CharacterStateChanged`;
-- не подменяет CommandBus для выдачи **новых** предметов во время игры (`addNewEntityToCharacterInventory`).
+- не подменяет CommandBus для выдачи **новых** предметов во время игры (`SpawnEntity`).
 
-Заполнение мира предметами при спавне — только `loadInventory`.
+Заполнение мира предметами при спавне персонажа — только `loadInventory`. Выдача / спавн во время игры — через CommandBus `SpawnEntity` → `enqueueCommand`.
 
 ---
 
@@ -343,5 +369,5 @@ Ok → снять все lock’и этой операции. Fail → отка�
 - [[TradeManager.md]] — sell и Lock на время продажи
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа; инвентарь только как проекция
 - [[../api/http api.md]] — транспорт HTTP JSON-RPC
-- [[../CommandBus/CommandBus.md]] — доставка команд с бекенда
-- [[../CommandBus/Commands.md]] — список команд игрового сервера
+- [[../CommandBus/CommandBus.md]] — доставка команд с бекенда (`run`, `reportCommands`)
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `removeEntity`, …)

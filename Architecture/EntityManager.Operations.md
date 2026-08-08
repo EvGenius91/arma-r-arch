@@ -176,7 +176,7 @@ sequenceDiagram
 | Fail | откат расположения в мире, Unlock |
 | Fail / StaleAfterReset ([[EntityManager.DupeAnalyzer.md]]) | не двигать мир по этой ops; мир уже/будет выровнен hard-reset или сверкой |
 | CommandBus `removeEntity` | удалить экземпляр где угодно (инвентарь / земля / «у другого»), Unlock, очистить очередь ops по uid |
-| CommandBus выдача / спавн | создать/переместить по команде |
+| CommandBus `SpawnEntity` | создать сущности в мире по команде (`enqueueCommand` → `reportCommands`) |
 
 EntityManager **не** ждёт второй вызов CharacterStateManager для удаления предмета. CharacterStateManager при необходимости обновляет проекцию/версию по событию или `CharacterStateChanged`.
 

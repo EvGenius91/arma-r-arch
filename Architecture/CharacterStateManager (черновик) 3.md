@@ -115,7 +115,7 @@ RegisterCharacter(...)
 
 Вызывается при возрождении (спавне). На бекенде создаётся или активируется персонаж, формируется стартовое состояние и начальный `stateVersion`.
 
-После успеха — `LoadCharacterState` (или снимок в ответе регистрации, если контракт его возвращает). Стартовые предметы в мире при необходимости ставятся через CommandBus (`addNewEntityToCharacterInventory` и т.п.); реестр сущностей — EntityManager.
+После успеха — `LoadCharacterState` (или снимок в ответе регистрации, если контракт его возвращает). Стартовые предметы в мире при необходимости ставятся через CommandBus (`SpawnEntity` и т.п.); реестр сущностей — EntityManager.
 
 ---
 
@@ -296,7 +296,7 @@ applyOperations(characterUid, baseVersion, operations[]) → ApplyOperationsResu
 | Подбор / дроп / move / equip / unequip / transfer / split-merge стеков / destroy сущности | [[EntityManager.md\|EntityManager]] |
 | `Buy` / `Sell` | [[TradeManager.md\|TradeManager]] на бекенде; мир — CommandBus |
 | Админская выдача предметов | бекенд + CommandBus |
-| Спавн/удаление техники в мире | CommandBus (`spawnNewVehicleToNearSlot`, `removeVehicle`, …) |
+| Спавн/удаление техники в мире | CommandBus (`SpawnEntity`, `removeVehicle`, …) |
 | Открытие/закрытие контейнера (если влияет на реестр сущностей) | EntityManager (или отдельный контракт мира), не CSM |
 
 ---
@@ -402,7 +402,7 @@ sequenceDiagram
     Trade->>BE: buy
     BE->>BE: commit_инвентарь_деньги_stateVersion++
     BE-->>Trade: BuyResult_Ok
-    BE->>CB: addNewEntityToCharacterInventory
+    BE->>CB: SpawnEntity
     CB->>World: добавить_предмет_в_мир
     BE->>Bridge: CharacterStateChanged(version)
     Bridge->>LEB: publish_CharacterStateChanged
@@ -525,7 +525,7 @@ Recovery (register / reconnect / VersionConflict):
 | [[EntityManager.md]] | реестр, владение, контейнеры/слоты; **синк предметов с бекендом**; подбор/дроп/move/equip — его API, не CSM |
 | [[BankingManager.md]] | наличные и счета; CSM отражает cash в снимке и может слать cash ops вне Trade |
 | [[TradeManager.md]] | buy/sell; не через `applyOperations` CSM и не через item-методы CSM |
-| [[../CommandBus/CommandBus.md\|CommandBus]] | `addNewEntityToCharacterInventory`, `removeEntity`, … |
+| [[../CommandBus/CommandBus.md\|CommandBus]] | `SpawnEntity`, `removeEntity`, … |
 | Local EventBus | единая диспетчеризация: сигналы с бекенда и локальные факты после apply |
 | GameBackendManager | мост: сигнал с бекенда → **только** `EventBus.publish`; character ops RPC — из CSM; entity location RPC — из EntityManager |
 

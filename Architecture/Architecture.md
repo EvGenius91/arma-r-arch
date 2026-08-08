@@ -11,6 +11,13 @@
 - [[BackendGameMutation.md]] — как бекенд принимает решение, а CommandBus применяет его в игровом мире (продажа, покупка)
 - [[../Common concepts.md]] — GameBackendManager и правило: все события с бекенда → Local EventBus
 
+## CommandBus
+
+Доставка команд бекенд → игровой сервер: опрос каждые 0.5 с, маршрутизация в целевые сервисы, отчёт `Completed` / `Fail`.
+
+- [[../CommandBus/CommandBus.md]] — `run`, `reportCommands`
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `removeEntity`, …)
+
 ## TradeManager
 
 Менеджер торговли: покупка, продажа, взаимодействие со средствами игрока.
@@ -38,7 +45,7 @@
 
 Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. При спавне / респавне заполняет инвентарь нового персонажа через `loadInventory`. **Зависит от EntityLockRegistry.**
 
-- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, `loadInventory`, enqueue*
+- [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, `loadInventory`, `enqueueCommand`, enqueue*
 - [[EntityManager.Entities.md]] — `EntityItem`, `StorageTypeEnum`, `GetInventoryByCharacterUidResult`, `FindEntitiesByUidListResult`
 - [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
 - [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations`
