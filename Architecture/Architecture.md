@@ -16,7 +16,9 @@
 Доставка команд бекенд → игровой сервер: опрос каждые 0.5 с, маршрутизация в целевые сервисы, отчёт `Completed` / `Fail`.
 
 - [[../CommandBus/CommandBus.md]] — `run`, `reportCommands`
-- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `removeEntity`, …)
+- [[../CommandBus/CommandBus.HttpMethods.md]] — JSON-RPC `command@getPendingCommands`, `command@reportCommands`
+- [[../CommandBus/CommandBus.Entities.md]] — `Command`, `CommandReport`, Result DTO
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`)
 
 ## TradeManager
 

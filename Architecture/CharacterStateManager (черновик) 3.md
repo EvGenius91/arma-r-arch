@@ -298,7 +298,7 @@ applyOperations(characterUid, baseVersion, operations[]) → ApplyOperationsResu
 | Подбор / дроп / move / equip / unequip / transfer / split-merge стеков / destroy сущности | [[EntityManager.md\|EntityManager]] |
 | `Buy` / `Sell` | [[TradeManager.md\|TradeManager]] на бекенде; мир — CommandBus |
 | Админская выдача предметов | бекенд + CommandBus |
-| Спавн/удаление техники в мире | CommandBus (`SpawnEntity`, `removeVehicle`, …) |
+| Спавн техники / предметов в мире | CommandBus (`SpawnEntity`) |
 | Открытие/закрытие контейнера (если влияет на реестр сущностей) | EntityManager (или отдельный контракт мира), не CSM |
 
 ---
@@ -527,7 +527,7 @@ Recovery (register / reconnect / VersionConflict):
 | [[EntityManager.md]] | реестр, владение, контейнеры/слоты; **синк предметов с бекендом**; подбор/дроп/move/equip — его API, не CSM |
 | [[BankingManager.md]] | наличные и счета; CSM отражает cash в снимке и может слать cash ops вне Trade |
 | [[TradeManager.md]] | buy/sell; не через `applyOperations` CSM и не через item-методы CSM |
-| [[../CommandBus/CommandBus.md\|CommandBus]] | `SpawnEntity`, `removeEntity`, … |
+| [[../CommandBus/CommandBus.md\|CommandBus]] | `SpawnEntity` |
 | Local EventBus | единая диспетчеризация: сигналы с бекенда и локальные факты после apply |
 | GameBackendManager | мост: сигнал с бекенда → **только** `EventBus.publish`; character ops RPC — из CSM; entity location RPC — из EntityManager |
 

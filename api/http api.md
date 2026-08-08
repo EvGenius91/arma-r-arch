@@ -1646,3 +1646,160 @@
   "id": 42
 }
 ```
+
+### getPendingCommands
+
+Возвращает пачку команд очереди бекенд → игровой сервер. При выдаче команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Пустой `commands` — успех. Вызывается из `CommandBus::run` каждые 0.5 с. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
+
+**`method`:** `"command@getPendingCommands"`
+
+**`params`**
+
+Нет (пустой объект `{}`). Сервер игры — в контексте API-ключа.
+
+**`result` (`GetPendingCommandsResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); при успехе сервиса — `"Ok"` |
+| `failReason` | string \| null | При `Ok` — `null`                                                        |
+| `commands`   | array \| null  | При `Ok`: массив `Command` (может быть пустым); при `Fail` — `null`      |
+
+Элемент `commands` (`Command`):
+
+| Поле      | Тип    | Описание                                      |
+| --------- | ------ | --------------------------------------------- |
+| `uid`     | string | Идентификатор команды (для отчёта)            |
+| `type`    | string | `SpawnEntity`                                 |
+| `payload` | object | Параметры по `type`; для `SpawnEntity` — `{ "entityUid": string }` |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "command@getPendingCommands",
+  "params": {},
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "commands": [
+      {
+        "uid": "cmd-001",
+        "type": "SpawnEntity",
+        "payload": {
+          "entityUid": "ent-can-001"
+        }
+      },
+      {
+        "uid": "cmd-002",
+        "type": "SpawnEntity",
+        "payload": {
+          "entityUid": "ent-backpack-1"
+        }
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех (пустая очередь)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "commands": []
+  },
+  "id": 1
+}
+```
+
+### reportCommands
+
+Принимает пачку отчётов о выполнении команд. Неизвестный / уже завершённый `commandUid` — идемпотентный no-op для записи. Пустой `reports` — успех. Вызывается из `CommandBus::reportCommands`. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#reportcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
+
+**`method`:** `"command@reportCommands"`
+
+**`params`**
+
+| Поле      | Тип   | Описание                          |
+| --------- | ----- | --------------------------------- |
+| `reports` | array | Список `CommandReport` (может быть пустым) |
+
+Элемент `reports` (`CommandReport`):
+
+| Поле         | Тип            | Описание                                      |
+| ------------ | -------------- | --------------------------------------------- |
+| `commandUid` | string         | `Command.uid` из ранее полученной команды     |
+| `status`     | string         | `"Completed"` или `"Fail"`                    |
+| `failReason` | string \| null | При `Completed` — `null`; при `Fail` — обязателен |
+
+**`result` (`ReportCommandsResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                              |
+| `failReason` | string \| null | При `Ok` — `null`; при request Fail — `"InvalidParams"`                  |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "command@reportCommands",
+  "params": {
+    "reports": [
+      {
+        "commandUid": "cmd-001",
+        "status": "Completed",
+        "failReason": null
+      },
+      {
+        "commandUid": "cmd-002",
+        "status": "Fail",
+        "failReason": "CannotSpawn"
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null
+  },
+  "id": 2
+}
+```
+
+**Пример ответа — отказ на уровне запроса (невалидные params)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "InvalidParams"
+  },
+  "id": 2
+}
+```

@@ -17,6 +17,7 @@
 | TradeManager | TradeService | `Contracts/TradeService/` |
 | BankingManager | BankingService | `Contracts/BankingService/` |
 | EntityManager | EntityRegistryService | `Contracts/EntityRegistryService/` — RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations` ([[../Architecture/EntityManager.HttpMethods.md]], [[../Architecture/EntityManager.Entities.md]]) |
+| CommandBus | CommandService | `Contracts/CommandService/` — RPC `command@getPendingCommands`, `command@reportCommands` ([[../CommandBus/CommandBus.HttpMethods.md]], [[../CommandBus/CommandBus.Entities.md]]) |
 
 Структура контракта сервиса:
 

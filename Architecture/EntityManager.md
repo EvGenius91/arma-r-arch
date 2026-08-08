@@ -200,7 +200,7 @@ enqueueCommand(command): void
 
 **Параметры:**
 
-- `command` — команда CommandBus, назначенная EntityManager (`SpawnEntity`, `removeEntity`, `removeVehicle` и т.п.; см. [[../CommandBus/Commands.md]]).
+- `command` — команда CommandBus, назначенная EntityManager (`SpawnEntity`; см. [[../CommandBus/Commands.md]]).
 
 **Когда вызывается:**
 
@@ -370,4 +370,4 @@ Ok → снять все lock’и этой операции. Fail → отка�
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа; инвентарь только как проекция
 - [[../api/http api.md]] — транспорт HTTP JSON-RPC
 - [[../CommandBus/CommandBus.md]] — доставка команд с бекенда (`run`, `reportCommands`)
-- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `removeEntity`, …)
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`)
