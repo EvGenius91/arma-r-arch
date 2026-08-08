@@ -5,6 +5,7 @@
 Документ описывает JSON-RPC контракты EntityManager / `EntityRegistryService` на бекенде:
 
 - чтение инвентаря персонажа — [[#getInventoryByCharacterUid]];
+- чтение сущностей по списку uid — [[#findEntitiesByUidList]];
 - отправка пачки операций расположения при flush — [[#applyOperations]] (таймер ~1 с или barrier; вызывается **только из EntityManager**; инвентарь / мир / UI / CharacterStateManager этот RPC не вызывают).
 
 Очередь, lock на in-flight, barrier: [[EntityManager.Operations.md]].  
@@ -120,6 +121,126 @@ getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
 
 ---
 
+## findEntitiesByUidList
+
+**JSON-RPC `method`:** `"entity@findEntitiesByUidList"`
+
+**Сигнатура**
+
+```text
+findEntitiesByUidList(string[] uidList): FindEntitiesByUidListResult
+```
+
+Доменный сервис (`EntityRegistryServiceInterface`):
+
+```text
+findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
+```
+
+**Аргументы**
+
+- `uidList: string[]` — список идентификаторов сущностей для выборки.
+
+**Описание**
+
+1. Бекенд возвращает сущности из реестра по переданным uid.
+2. Отсутствующие uid **пропускаются** — это не ошибка и не `Fail`.
+3. Порядок элементов в `entities` соответствует порядку запрошенных uid (только найденные).
+4. Пустой `uidList` → пустой `entities` (штатный успех).
+5. Скрытые сущности в результат не попадают.
+6. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `FindEntitiesByUidListResult` со `status = Ok`.
+7. На уровне API: если `uidList` отсутствует или не массив — `InvalidParams` (request-level Fail).
+
+**Результат**
+
+[[EntityManager.Entities.md#FindEntitiesByUidListResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]].
+
+**Причины отказа**
+
+Доменных Fail / enum причин нет. На уровне запроса API:
+
+- `InvalidParams` — `uidList` отсутствует или не массив.
+
+### Примеры
+
+**Запрос**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@findEntitiesByUidList",
+  "params": {
+    "uidList": ["ent-can-001", "ent-missing", "ent-backpack-1"]
+  },
+  "id": 2
+}
+```
+
+**Ответ — успех (найденные; отсутствующий uid пропущен, порядок сохранён)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": [
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      },
+      {
+        "uid": "ent-backpack-1",
+        "prefabName": "Backpack_01",
+        "isContainer": true,
+        "position": null,
+        "parentContainerUid": null,
+        "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+**Ответ — успех (пустой список uid)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": []
+  },
+  "id": 2
+}
+```
+
+**Ответ — отказ на уровне запроса (невалидные params)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "InvalidParams",
+    "entities": null
+  },
+  "id": 2
+}
+```
+
+---
+
 ## applyOperations
 
 **JSON-RPC `method`:** `"entity@applyOperations"`
@@ -165,15 +286,15 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `storageType` | string | Тип хранилища ([[EntityManager.Entities.md#StorageTypeEnum]]): `SCR_CharacterInventoryStorageComponent`, `SCR_WeaponAttachmentsStorageComponent`, `EquipedWeaponStorageComponent` |
+| `storageType` | string | Тип хранилища ([[EntityManager.Entities.md#StorageTypeEnum]]): `SCR_CharacterInventoryStorageComponent`, `SCR_WeaponAttachmentsStorageComponent`, `EquipedWeaponStorageComponent`, `SCR_UniversalInventoryStorageComponent` |
 
 **`PickUpEntity` / `MoveEntity`**
 
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `targetContainerUid` | string | Контейнер назначения |
-| `slot` | string \| null | Слот назначения, если нужен контракту |
-| `storageType` | string | Тип хранилища назначения (обязателен) |
+| Поле                 | Тип            | Описание                                                                 |
+| -------------------- | -------------- | ------------------------------------------------------------------------ |
+| `targetContainerUid` | string \| null | Контейнер назначения; `null`, если цель — корневой слот экипировки персонажа (рюкзак, штаны, куртка и т.п.) |
+| `slot`               | string \| null | Слот назначения; обязателен, когда `targetContainerUid` = `null`         |
+| `storageType`        | string         | Тип хранилища назначения (обязателен)                                    |
 
 **`DropEntity`**
 
@@ -226,7 +347,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 Индексация **1:1** с входным `operations[]` (без дублирования `entityUid` в результате — идентификация по индексу).
 
-Игровой сервер по индексам откатывает оптимизм только для упавших ops и снимает lock затронутых uid ([[EntityManager.Operations.md]]).
+Игровой сервер по индексам откатывает расположение в мире только для упавших ops и снимает lock затронутых uid ([[EntityManager.Operations.md]]).
 
 ### Причины отказа на уровне запроса (`failReason`)
 
@@ -350,7 +471,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 ## Связанные документы
 
 - [[EntityManager.md]] — реестр и `enqueue*`
-- [[EntityManager.Entities.md]] — `EntityItem`, `GetInventoryByCharacterUidResult`
+- [[EntityManager.Entities.md]] — `EntityItem`, `GetInventoryByCharacterUidResult`, `FindEntitiesByUidListResult`
 - [[EntityManager.Operations.md]] — очередь, flush, in-flight
 - [[EntityManager.DupeAnalyzer.md]] — `resetGeneration`, hard-reset
 - [[EntityLockRegistry.md]] — Lock на время in-flight

@@ -21,7 +21,7 @@ TradeManager   ──depends on──►  EntityLockRegistry
 
 - EntityManager не даст выбросить / переложить / подобрать / передать uid, пока по нему летит пачка;
 - Trade не начнёт `sell`, если uid уже в lock (in-flight EM или чужой `SellPending`);
-- пока ops лишь в очереди EM (lock ещё нет) — второй игрок **может** подобрать предмет после локального оптимизма дропа; обе ops упорядоченно уйдут в одной пачке.
+- пока ops лишь в очереди EM (lock ещё нет) — второй игрок **может** подобрать предмет после дропа в мире; обе ops упорядоченно уйдут в одной пачке.
 
 Реестр **не** источник истины бекенда и **не** отменяет CommandBus: `removeEntity` с бекенда выполняется даже для заблокированного uid; после удаления запись из реестра снимается.
 
@@ -32,7 +32,8 @@ TradeManager   ──depends on──►  EntityLockRegistry
 ```text
 EntityManager.enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
   → EntityLockRegistry.IsLocked(entityUid)?  // да (in-flight / SellPending) → отказ
-  → локальный оптимизм + запись в очередь EntityManager
+  → регистрация расположения в реестре EM + запись в очередь
+     (для PickUp мир уже перенёс IEntity; EM не двигает предмет повторно)
   → … таймер ~1 с или barrier …
   → EntityLockRegistry.Lock(entityUid, reason, scope, ownerService: EntityManager)
   → отправка пачки на бекенд (in-flight)
@@ -154,9 +155,9 @@ IsLocked(entityUid, requiredScope?) → bool
 
 ```text
 1. EntityManager: IsLocked? (in-flight / SellPending → отказ)
-2. оптимизм в мире + запись в очередь (без Lock)
+2. мир уже изменил расположение (для PickUp — инвентарь); EM обновляет реестр + запись в очередь (без Lock)
 3. flush (таймер / barrier) → Lock(..., EntityManager) → пачка на бекенд
-4. ответ бекенда → Unlock (EntityManager)
+4. ответ бекенда → Unlock (EntityManager); при Fail — откат расположения в мире
 ```
 
 Если Trade спросит `IsLocked` во время in-flight — получит `true`, sell не стартует. Пока ops только в очереди — `IsLocked` от EM нет; перед sell Trade делает barrier/flush при необходимости (см. [[EntityManager.Operations.md]]).

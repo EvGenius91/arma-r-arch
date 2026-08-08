@@ -98,7 +98,7 @@ sequenceDiagram
 
     World->>EM: enqueuePickup_Drop_Move
     EM->>Lock: IsLocked
-    EM->>EM: оптимизм_и_очередь
+    EM->>EM: реестр_и_очередь
     Note over EM: flush_1с_или_barrier
     EM->>Lock: Lock
     EM->>BE: пачка_ops_по_порядку
@@ -131,7 +131,7 @@ sequenceDiagram
 
 | Момент | Вызов EntityLockRegistry |
 |--------|--------------------------|
-| `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе оптимизм + очередь **без** Lock |
+| `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе регистрация расположения + очередь **без** Lock |
 | flush пачки (~1 с / barrier) | `Lock(…, ownerService: EntityManager)` → отправка |
 | Ok / Fail с бекендом | `Unlock` |
 | Уже есть `SellPending` от Trade | отказ enqueue (не выбрасывать продаваемый предмет) |
@@ -141,9 +141,10 @@ sequenceDiagram
 ```text
 enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
   → EntityLockRegistry.IsLocked (отказ если занято)
-  → локальный оптимизм + очередь EntityManager
+  → зафиксировать уже случившееся в мире расположение в реестре + очередь EntityManager
+     (для PickUp мир двигает IEntity сам; EM не клонирует и не перекладывает предмет повторно)
   → flush (таймер / barrier) → Lock → пачка на бекенд
-  → Ok/Fail → Unlock
+  → Ok/Fail → Unlock (при Fail — откат расположения в мире)
 ```
 
 Очередь, barrier (магазин и др.), порядок пачки: [[EntityManager.Operations.md]].
@@ -170,7 +171,7 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 
 ## Каталог операций расположения (игра → бекенд)
 
-Контракт бекенда (`EntityRegistryService`). На игровом сервере им соответствуют методы EntityManager; вызывающий код (инвентарь / мир) **не** ходит в CSM. Чтение инвентаря: [[EntityManager.HttpMethods.md#getInventoryByCharacterUid|entity@getInventoryByCharacterUid]]. HTTP-пачка при flush: [[EntityManager.HttpMethods.md|entity@applyOperations]].
+Контракт бекенда (`EntityRegistryService`). На игровом сервере им соответствуют методы EntityManager; вызывающий код (инвентарь / мир) **не** ходит в CSM. Чтение: [[EntityManager.HttpMethods.md#getInventoryByCharacterUid|entity@getInventoryByCharacterUid]], [[EntityManager.HttpMethods.md#findEntitiesByUidList|entity@findEntitiesByUidList]]. HTTP-пачка при flush: [[EntityManager.HttpMethods.md|entity@applyOperations]].
 
 | Операция (бек) | Смысл |
 |----------------|--------|
@@ -183,7 +184,7 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 | `SplitStack` / `MergeStack` | стеки (если есть в проекте) |
 | `DestroyEntity` | уничтожение / снятие с реестра (контракт уточняется отдельно) |
 
-Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): локальный оптимизм + очередь; `Lock` — при flush пачки. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
+Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): регистрация уже произошедшего в мире изменения + очередь; `Lock` — при flush пачки. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
 
 ---
 
@@ -259,23 +260,23 @@ enqueueDropEntity(string entityUid, vector position, string characterUid, Storag
 **Сигнатура:**
 
 ```text
-enqueuePickupEntity(string entityUid, string targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
+enqueuePickupEntity(string entityUid, string|null targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
 ```
 
 **Параметры:**
 
 - `entityUid` — идентификатор подбираемой сущности;
-- `targetContainerUid` — контейнер / слот назначения (инвентарь персонажа, рюкзак и т.п.);
+- `targetContainerUid` — контейнер назначения (рюкзак и т.п.); `null`, если подбор в корневой слот экипировки персонажа (рюкзак, штаны, куртка);
 - `characterUid` — персонаж, который подбирает;
 - `storageType` — тип хранилища назначения ([[EntityManager.Entities.md#StorageTypeEnum]]);
-- `slot` — слот назначения, если нужен контракту.
+- `slot` — слот назначения; обязателен, когда `targetContainerUid` = `null`.
 
 **Описание:**
 
 1. Проверяет доступность сущности; если `EntityLockRegistry.IsLocked(entityUid)` (in-flight / SellPending) — отказ. Если чужой `Drop` ещё только в очереди — подбор допустим и встаёт в очередь того же uid после `Drop`.
-2. Локально переносит сущность в целевой контейнер (один экземпляр на uid).
+2. **Не переносит** сущность в мире: перенос уже выполнил инвентарь / игровой хук (вызывающий код зовёт `enqueuePickupEntity` *после* факта подбора). EntityManager обновляет связи в локальном реестре под новое расположение и сохраняет снимок прежнего для возможного отката.
 3. Ставит в очередь операцию `PickUpEntity` с `resetGeneration` (без Lock).
-4. На flush: `Lock(entityUid, reason: PickUp, …)`; при политике родителя — узкий `ContainerDispose` на контейнере назначения; пачка на бекенд с сохранением порядка.
+4. На flush: `Lock(entityUid, reason: PickUp, …)`; если задан `targetContainerUid` — узкий `ContainerDispose` на контейнере назначения по политике; при подборе в корневой слот (`targetContainerUid` = `null`) родительского lock нет; пачка на бекенд с сохранением порядка.
 
 Ok → `Unlock`. Fail → откат в предыдущее расположение (например обратно на землю / в машину) и `Unlock`.
 
@@ -286,16 +287,16 @@ Ok → `Unlock`. Fail → откат в предыдущее расположе�
 **Сигнатура:**
 
 ```text
-enqueueMoveEntity(string entityUid, string targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
+enqueueMoveEntity(string entityUid, string|null targetContainerUid, string characterUid, StorageTypeEnum storageType, string slot?): void
 ```
 
 **Параметры:**
 
 - `entityUid` — перемещаемая сущность;
-- `targetContainerUid` — контейнер назначения;
+- `targetContainerUid` — контейнер назначения; `null`, если цель — корневой слот экипировки персонажа;
 - `characterUid` — персонаж, инициировавший перемещение;
 - `storageType` — тип хранилища назначения ([[EntityManager.Entities.md#StorageTypeEnum]]);
-- `slot` — слот назначения, если нужен.
+- `slot` — слот назначения; обязателен, когда `targetContainerUid` = `null`.
 
 **Описание:**
 
@@ -335,9 +336,9 @@ Ok → снять все lock’и этой операции. Fail → отка�
 - [[Architecture.md]] — оглавление архитектуры менеджеров
 - [[BackendGameMutation.md]] — принцип применения изменений мира через CommandBus
 - [[EntityLockRegistry.md]] — общий реестр блокировок (EntityManager + Trade)
-- [[EntityManager.Entities.md]] — сущности реестра и результат `getInventoryByCharacterUid`
+- [[EntityManager.Entities.md]] — сущности реестра и результаты `getInventoryByCharacterUid` / `findEntitiesByUidList`
 - [[EntityManager.Operations.md]] — логика операций и очередь
-- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@applyOperations`
+- [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, игнор операций
 - [[TradeManager.md]] — sell и Lock на время продажи
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа; инвентарь только как проекция

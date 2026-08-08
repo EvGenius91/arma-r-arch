@@ -1415,6 +1415,90 @@
 }
 ```
 
+### findEntitiesByUidList
+
+Возвращает сущности реестра по списку uid. Отсутствующие uid пропускаются; порядок результата = порядок запрошенных uid (только найденные). Пустой `uidList` — успех с пустым `entities`. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md#findentitiesbyuidlist), сущности: [Architecture/EntityManager.Entities.md](../Architecture/EntityManager.Entities.md).
+
+**`method`:** `"entity@findEntitiesByUidList"`
+
+**`params`**
+
+| Поле      | Тип      | Описание                         |
+| --------- | -------- | -------------------------------- |
+| `uidList` | string[] | Список идентификаторов сущностей |
+
+**`result` (`FindEntitiesByUidListResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); при успехе сервиса — `"Ok"` |
+| `failReason` | string \| null | При `Ok` — `null`; при Fail — `"InvalidParams"`                          |
+| `entities`   | array \| null  | При `Ok`: массив `EntityItem` (может быть пустым); при `Fail` — `null`   |
+
+Элемент `entities` (`EntityItem`) — те же поля, что у `getInventoryByCharacterUid`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@findEntitiesByUidList",
+  "params": {
+    "uidList": ["ent-can-001", "ent-missing", "ent-backpack-1"]
+  },
+  "id": 2
+}
+```
+
+**Пример ответа — успех (отсутствующий uid пропущен)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": [
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      },
+      {
+        "uid": "ent-backpack-1",
+        "prefabName": "Backpack_01",
+        "isContainer": true,
+        "position": null,
+        "parentContainerUid": null,
+        "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+**Пример ответа — успех (пустой uidList)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "entities": []
+  },
+  "id": 2
+}
+```
+
 ### applyOperations (EntityManager)
 
 Принимает упорядоченную пачку операций расположения сущностей от EntityManager при flush. Вызывается только с игрового сервера (не из UI / CSM). Пачка не атомарна по всем `entityUid`; успех/отказ — по каждой ops. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md), очередь: [Architecture/EntityManager.Operations.md](../Architecture/EntityManager.Operations.md).
@@ -1437,11 +1521,11 @@
 | `characterUid`    | string | Персонаж-инициатор                                                       |
 | `payload`         | object | Поля по `type` (см. ниже)                                                |
 
-`payload` для основных типов (везде обязателен `storageType`: `SCR_CharacterInventoryStorageComponent` \| `SCR_WeaponAttachmentsStorageComponent` \| `EquipedWeaponStorageComponent`):
+`payload` для основных типов (везде обязателен `storageType`: `SCR_CharacterInventoryStorageComponent` \| `SCR_WeaponAttachmentsStorageComponent` \| `EquipedWeaponStorageComponent` \| `SCR_UniversalInventoryStorageComponent`):
 
 | `type` | Поля `payload` |
 | ------ | -------------- |
-| `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string), `slot` (string \| null), `storageType` (string) |
+| `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string \| null; `null` для корневого слота экипировки), `slot` (string \| null; обязателен при `targetContainerUid` = null), `storageType` (string) |
 | `DropEntity` | `position` `{ x, y, z }` (числа), `storageType` (string) |
 | `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null), `storageType` (string) |
 

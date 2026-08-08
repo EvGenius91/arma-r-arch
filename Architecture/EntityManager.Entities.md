@@ -13,6 +13,7 @@ enum StorageTypeEnum
 	SCR_CharacterInventoryStorageComponent;
 	SCR_WeaponAttachmentsStorageComponent;
 	EquipedWeaponStorageComponent;
+	SCR_UniversalInventoryStorageComponent;
 }
 ```
 
@@ -23,6 +24,7 @@ enum StorageTypeEnum
 - `SCR_CharacterInventoryStorageComponent` — хранилище инвентаря персонажа.
 - `SCR_WeaponAttachmentsStorageComponent` — хранилище вложений оружия.
 - `EquipedWeaponStorageComponent` — хранилище экипированного оружия.
+- `SCR_UniversalInventoryStorageComponent` — универсальное хранилище инвентаря.
 
 **Используется в**
 [[#EntityItem]], [[EntityManager.HttpMethods.md#applyOperations]]
@@ -68,7 +70,7 @@ class EntityItem
 ```
 
 **Назначение**
-Сущность игрового мира в реестре (соответствует `EntityItemDto`). Элемент плоского списка инвентаря персонажа из [[EntityManager.HttpMethods.md#getInventoryByCharacterUid]].
+Сущность игрового мира в реестре (соответствует `EntityItemDto`). Элемент плоского списка из [[EntityManager.HttpMethods.md#getInventoryByCharacterUid]] и [[EntityManager.HttpMethods.md#findEntitiesByUidList]].
 
 **Свойства**
 - `uid: string` - идентификатор сущности.
@@ -86,7 +88,7 @@ class EntityItem
 [[#Position]], [[#StorageTypeEnum]]
 
 **Используется в**
-[[#GetInventoryByCharacterUidResult]]
+[[#GetInventoryByCharacterUidResult]], [[#FindEntitiesByUidListResult]]
 
 ### GetInventoryByCharacterUidResult
 
@@ -113,3 +115,29 @@ class GetInventoryByCharacterUidResult
 
 **Используется в**
 [[EntityManager.HttpMethods.md#getInventoryByCharacterUid]]
+
+### FindEntitiesByUidListResult
+
+**Сигнатура**
+```
+class FindEntitiesByUidListResult
+{
+	OperationStatusEnum status;
+	string failReason;
+	EntityItem[] entities;
+}
+```
+
+**Назначение**
+Результат выборки сущностей по списку uid ([[EntityManager.HttpMethods.md#findEntitiesByUidList]]). API-обёртка над `list<EntityItemDto>` сервиса `EntityRegistryService`.
+
+**Свойства**
+- `status: OperationStatusEnum` - итог операции ([[TradeManager.Entities.md#OperationStatusEnum]]). При успешном вызове сервиса всегда `Ok`. Доменных отказов нет; request-level `Fail` возможен только при невалидных params (`InvalidParams`).
+- `failReason: string|null` - при `Ok` всегда `null`; при request Fail — `"InvalidParams"`.
+- `entities: EntityItem[]|null` - при `Ok`: найденные сущности в порядке запрошенных uid (отсутствующие uid пропущены; список может быть пустым); при `Fail` — `null`.
+
+**Связано**
+[[TradeManager.Entities.md#OperationStatusEnum]], [[#EntityItem]]
+
+**Используется в**
+[[EntityManager.HttpMethods.md#findEntitiesByUidList]]

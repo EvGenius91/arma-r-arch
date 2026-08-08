@@ -2,7 +2,7 @@
 
 Назад: [[EntityManager.md]] · [[Architecture.md]]
 
-Логика обработки операций расположения сущностей: публичный API, локальное применение, исходящая очередь, flush (таймер / barrier), блокировки через [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight, реакция на ответ бекенда. Дюпы и hard-reset — отдельно: [[EntityManager.DupeAnalyzer.md]].
+Логика обработки операций расположения сущностей: публичный API (регистрация уже случившегося в мире изменения), исходящая очередь, flush (таймер / barrier), блокировки через [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight, реакция на ответ бекенда. Дюпы и hard-reset — отдельно: [[EntityManager.DupeAnalyzer.md]].
 
 ## Главные правила
 
@@ -12,7 +12,7 @@
 4. В пачке ops **обязательно сохраняют порядок** (особенно цепочка по одному uid).
 5. **Lock** в EntityLockRegistry — только пока по uid есть **in-flight** (пачка ушла, ответа ещё нет). Пока ops лишь в очереди — uid не locked: новые игровые ops по нему можно ставить в очередь (в т.ч. подбор вторым игроком после чужого дропа).
 6. Блокировка — **по сущности** (и узко по родителю-контейнеру на время in-flight), не глобальная очередь на весь мир.
-7. Бекенд — источник истины; отказ → откат локального оптимизма. Мутации с бекенда в мир — через CommandBus ([[BackendGameMutation.md]]), не из Trade напрямую.
+7. Бекенд — источник истины; отказ → откат расположения в мире. Мутации с бекенда в мир — через CommandBus ([[BackendGameMutation.md]]), не из Trade напрямую.
 8. Каждая операция несёт `resetGeneration` сущности ([[EntityManager.DupeAnalyzer.md]]).
 9. Trade на время sell пишет в тот же реестр (`SellPending`) — это отдельный lock продажи, не очередь EM.
 
@@ -21,18 +21,18 @@
 ## Модель очереди и отправки (итог)
 
 ```text
-enqueue* → проверки → локальный оптимизм → запись в очередь (без Lock)
+enqueue* → проверки → зафиксировать расположение в реестре (мир уже изменился для PickUp) → запись в очередь (без Lock)
          → flush: ~1 с  ИЛИ  barrier
          → Lock затронутых uid → entity@applyOperations (порядок сохранён) → in-flight
-         → Ok / Fail → Unlock → при необходимости следующая пачка по uid
+         → Ok / Fail → Unlock → при Fail откат расположения в мире; при необходимости следующая пачка по uid
 ```
 
 | Фаза | Поведение по uid |
 |------|------------------|
-| В очереди, ещё не ушло | оптимизм уже в мире сервера; lock нет; новые ops (в т.ч. другого игрока) дописываются в очередь **в порядке поступления** |
+| В очереди, ещё не ушло | расположение уже в мире сервера (для PickUp — сдвинул инвентарь); lock нет; новые ops (в т.ч. другого игрока) дописываются в очередь **в порядке поступления** |
 | Пачка ушла, ждём ответ (in-flight) | `EntityLockRegistry.Lock` — нельзя drop / pick / move / sell этого uid |
 | Ok | `Unlock`, мир совпал (или дотянуть мелочи), EventBus |
-| Fail | откат оптимизма по затронутым ops, `Unlock` |
+| Fail | откат расположения по затронутым ops, `Unlock` |
 
 ### Когда flush
 
@@ -58,12 +58,12 @@ Barrier **скоупается** по смыслу события: открыт�
 
 ## Публичный API
 
-Системы мира вызывают `enqueue*` — **одна операция, локальный оптимизм + постановка в очередь**. Снаружи не собирают пачки и не знают про HTTP.
+Системы мира вызывают `enqueue*` — **одна операция: мир уже изменил расположение (для PickUp), EntityManager регистрирует связи и ставит в очередь**. Снаружи не собирают пачки и не знают про HTTP.
 
 ```text
-enqueuePickupEntity(entityUid, targetContainerUid, characterUid, storageType, slot?)
+enqueuePickupEntity(entityUid, targetContainerUid?, characterUid, storageType, slot?)
 enqueueDropEntity(entityUid, position, characterUid, storageType)
-enqueueMoveEntity(entityUid, targetContainerUid, characterUid, storageType, slot?)
+enqueueMoveEntity(entityUid, targetContainerUid?, characterUid, storageType, slot?)
 // далее по тому же шаблону:
 // enqueueEquipItem / enqueueTransferEntity / …
 ```
@@ -82,14 +82,16 @@ Trade перед `sell`: при необходимости barrier/flush по ui
 1. Вызов enqueueDropEntity / enqueuePickupEntity / enqueueMoveEntity / …
 2. Проверки: сущность есть; если uid уже in-flight (IsLocked от EM) — отказ
    (не ставить новые игровые ops, пока летит пачка); доменные правила игры
-3. Локально применить оптимизм в реестре / мире (перенос объекта, не клон)
+3. Для PickUp: мир уже перенёс IEntity (инвентарь / хук); EM только обновляет связи
+   в локальном реестре и снимок прежнего расположения для отката. EM не двигает предмет повторно.
+   (Drop / Move — источник переноса в мире у вызывающей системы; EM регистрирует и ставит в очередь.)
 4. Поставить операцию в исходящую очередь (с resetGeneration) — без Lock
 5. Flush (таймер ~1 с или barrier):
    Lock затронутых uid (+ родитель ContainerDispose по политике)
    отправить пачку через `entity@applyOperations` с сохранением порядка
 6. Ответ по uid / ops:
    Ok  → Unlock, зафиксировать связи, событие в Local EventBus
-   Fail → откат локального оптимизма, Unlock, событие / сигнал UI
+   Fail → откат расположения в мире, Unlock, событие / сигнал UI
 7. Снять из in-flight; при наличии хвоста очереди — следующий flush по правилам
 ```
 
@@ -101,10 +103,11 @@ sequenceDiagram
     participant Q as Очередь
     participant BE as Бекенд
 
-    World->>EM: enqueueDropEntity_банка
+    World->>World: подбор_в_инвентарь
+    World->>EM: enqueuePickupEntity_банка
     EM->>EM: IsLocked_нет
-    EM->>EM: локально_на_землю
-    EM->>Q: Drop_в_очередь
+    EM->>EM: реестр_связей_снимок
+    EM->>Q: PickUp_в_очередь
     Note over Q: ждём_таймер_или_barrier
     EM->>Lock: Lock_банка
     EM->>BE: entity@applyOperations
@@ -113,7 +116,7 @@ sequenceDiagram
         EM->>Lock: Unlock_банка
     else Fail
         BE-->>EM: Fail
-        EM->>EM: откат_оптимизма
+        EM->>EM: откат_в_мире
         EM->>Lock: Unlock_банка
     end
 ```
@@ -124,7 +127,7 @@ sequenceDiagram
 
 Пока ops по `entityUid` **только в очереди** (ещё не ушли):
 
-- второй игрок **может** подобрать предмет, если локальный мир сервера уже показывает его на земле после оптимизма дропа;
+- второй игрок **может** подобрать предмет, если локальный мир сервера уже показывает его на земле после дропа;
 - обе ops попадают в одну упорядоченную очередь uid: `[Drop P1, PickUp P2]` и могут уйти в одной пачке.
 
 Пока по `entityUid` есть **in-flight** (пачка ушла, ответа нет):
@@ -151,7 +154,7 @@ sequenceDiagram
 
 ### Передача / дроп / подбор
 
-`enqueue*` → оптимизм + очередь. `Lock` — при уходе пачки в in-flight. Trade / другие игроки видят `IsLocked` только в этом окне (и при `SellPending`).
+`enqueue*` → регистрация расположения + очередь. `Lock` — при уходе пачки в in-flight. Trade / другие игроки видят `IsLocked` только в этом окне (и при `SellPending`).
 
 ### Продажа (Trade)
 
@@ -170,7 +173,7 @@ sequenceDiagram
 | Событие | Действие EntityManager |
 |---------|-------------------------|
 | Ok операции расположения | Unlock, мир уже совпал (или дотянуть мелочи), EventBus |
-| Fail | откат оптимизма, Unlock |
+| Fail | откат расположения в мире, Unlock |
 | Fail / StaleAfterReset ([[EntityManager.DupeAnalyzer.md]]) | не двигать мир по этой ops; мир уже/будет выровнен hard-reset или сверкой |
 | CommandBus `removeEntity` | удалить экземпляр где угодно (инвентарь / земля / «у другого»), Unlock, очистить очередь ops по uid |
 | CommandBus выдача / спавн | создать/переместить по команде |
@@ -199,8 +202,8 @@ payload                 // storageType (обязателен), containerUid, slo
 
 ### Кейс A — дроп и подбор вторым игроком (одна пачка)
 
-1. Игрок 1 дропает банку → оптимизм на земле, `Drop` в очереди (lock ещё нет).  
-2. Игрок 2 подбирает банку → оптимизм в инвентаре P2, очередь uid: `[Drop P1, PickUp P2]`.  
+1. Игрок 1 дропает банку → банка на земле в мире, `Drop` в очереди (lock ещё нет).  
+2. Игрок 2 подбирает банку → банка уже в инвентаре P2 в мире, EM ставит `PickUp` в очередь uid: `[Drop P1, PickUp P2]`.  
 3. Flush (таймер или barrier) → `Lock(банка)` → пачка в том же порядке → ответ → `Unlock`.  
 4. Рассинхрона нет: общий EM на игровом сервере, порядок на бекенде тот же.
 
