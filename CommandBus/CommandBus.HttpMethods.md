@@ -44,12 +44,13 @@ getPendingCommands(): list<CommandDto>
 
 **Описание**
 
-1. Бекенд возвращает пачку команд, ожидающих выполнения в мире.
-2. Пустой `commands` — штатный успех (очередь пуста), не ошибка.
+1. Бекенд возвращает пачку команд текущей игровой сессии ([[../Architecture/GameManager.Entities.md#ServerSession]]), ожидающих выполнения в мире. Команды других сессий не выдаются и не переводятся в in-flight.
+2. Пустой `commands` — штатный успех (очередь пуста или нет активной сессии), не ошибка.
 3. При выдаче команды переходят в **in-flight**: повторный poll **не** отдаёт их снова, пока нет отчёта через [[#reportCommands]].
 4. Возврат в pending после `Fail` или истечения lease — политика бекенда; детали retry-алгоритма в v1 не фиксируются.
 5. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `GetPendingCommandsResult` со `status = Ok`.
 6. На игровом сервере вызывающий — [[CommandBus.md#run|CommandBus::run]]: цикл каждые 0.5 с запрашивает пачку и маршрутизирует команды по `type` (см. [[Commands.md]]).
+7. `serverSessionUid` в result не отдаётся.
 
 **Результат**
 
@@ -90,7 +91,7 @@ getPendingCommands(): list<CommandDto>
       },
       {
         "uid": "cmd-002",
-        "type": "SpawnEntity",
+        "type": "DeleteEntity",
         "payload": {
           "entityUid": "ent-backpack-1"
         }

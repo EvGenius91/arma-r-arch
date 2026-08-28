@@ -1348,6 +1348,7 @@
 | `prefabName`         | string         | Имя префаба                                   |
 | `isContainer`        | boolean        | Признак контейнера                            |
 | `position`           | object \| null | Координаты в мире `{ x, y, z }` или `null`    |
+| `angle`              | object \| null | Угол в мире `{ x, y, z }` или `null`          |
 | `parentContainerUid` | string \| null | Родительский контейнер                        |
 | `inventorySlotUid`   | string \| null | Слот инвентаря / экипировки                   |
 | `ownerCharacterUid`  | string \| null | Персонаж-владелец                             |
@@ -1380,6 +1381,7 @@
         "prefabName": "Backpack_01",
         "isContainer": true,
         "position": null,
+        "angle": null,
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
         "ownerCharacterUid": "char-42",
@@ -1390,6 +1392,7 @@
         "prefabName": "Food_Can",
         "isContainer": false,
         "position": null,
+        "angle": null,
         "parentContainerUid": "ent-backpack-1",
         "inventorySlotUid": null,
         "ownerCharacterUid": "char-42",
@@ -1417,7 +1420,7 @@
 
 ### findEntitiesByUidList
 
-Возвращает сущности реестра по списку uid. Отсутствующие uid пропускаются; порядок результата = порядок запрошенных uid (только найденные). Пустой `uidList` — успех с пустым `entities`. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md#findentitiesbyuidlist), сущности: [Architecture/EntityManager.Entities.md](../Architecture/EntityManager.Entities.md).
+Возвращает сущности реестра по списку uid вместе с вложенными потомками (плоский список по `parentContainerUid`). Отсутствующие uid пропускаются. Сначала найденные из `uidList` в порядке запроса, затем потомки. Пустой `uidList` — успех с пустым `entities`. Подробнее: [Architecture/EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md#findentitiesbyuidlist), сущности: [Architecture/EntityManager.Entities.md](../Architecture/EntityManager.Entities.md).
 
 **`method`:** `"entity@findEntitiesByUidList"`
 
@@ -1433,7 +1436,7 @@
 | ------------ | -------------- | ------------------------------------------------------------------------ |
 | `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); при успехе сервиса — `"Ok"` |
 | `failReason` | string \| null | При `Ok` — `null`; при Fail — `"InvalidParams"`                          |
-| `entities`   | array \| null  | При `Ok`: массив `EntityItem` (может быть пустым); при `Fail` — `null`   |
+| `entities`   | array \| null  | При `Ok`: плоский массив `EntityItem` — запрошенные uid и потомки (может быть пустым); при `Fail` — `null` |
 
 Элемент `entities` (`EntityItem`) — те же поля, что у `getInventoryByCharacterUid`.
 
@@ -1444,13 +1447,13 @@
   "jsonrpc": "2.0",
   "method": "entity@findEntitiesByUidList",
   "params": {
-    "uidList": ["ent-can-001", "ent-missing", "ent-backpack-1"]
+    "uidList": ["ent-backpack-1", "ent-missing"]
   },
   "id": 2
 }
 ```
 
-**Пример ответа — успех (отсутствующий uid пропущен)**
+**Пример ответа — успех (рюкзак и содержимое; отсутствующий uid пропущен)**
 
 ```json
 {
@@ -1460,22 +1463,24 @@
     "failReason": null,
     "entities": [
       {
-        "uid": "ent-can-001",
-        "prefabName": "Food_Can",
-        "isContainer": false,
-        "position": null,
-        "parentContainerUid": "ent-backpack-1",
-        "inventorySlotUid": null,
-        "ownerCharacterUid": "char-42",
-        "storageType": "SCR_CharacterInventoryStorageComponent"
-      },
-      {
         "uid": "ent-backpack-1",
         "prefabName": "Backpack_01",
         "isContainer": true,
         "position": null,
+        "angle": null,
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      },
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "angle": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
         "ownerCharacterUid": "char-42",
         "storageType": "SCR_CharacterInventoryStorageComponent"
       }
@@ -1516,17 +1521,18 @@
 | Поле              | Тип    | Описание                                                                 |
 | ----------------- | ------ | ------------------------------------------------------------------------ |
 | `entityUid`       | string | Идентификатор сущности                                                   |
-| `type`            | string | `PickUpEntity`, `DropEntity`, `MoveEntity`, `EquipItem`, `UnequipItem`, `SwapEquipment`, `TransferEntity`, `SplitStack`, `MergeStack`, `DestroyEntity` |
+| `type`            | string | `PickUpEntity`, `DropEntity`, `MoveEntity`, `EntityTransformChanged`, `EquipItem`, `UnequipItem`, `SwapEquipment`, `TransferEntity`, `SplitStack`, `MergeStack`, `DestroyEntity` |
 | `resetGeneration` | number | Поколение сущности на момент отправки                                    |
-| `characterUid`    | string | Персонаж-инициатор                                                       |
+| `characterUid`    | string \| null | Персонаж-инициатор; `null` для `EntityTransformChanged`                  |
 | `payload`         | object | Поля по `type` (см. ниже)                                                |
 
-`payload` для основных типов (везде обязателен `storageType`: `SCR_CharacterInventoryStorageComponent` \| `SCR_WeaponAttachmentsStorageComponent` \| `EquipedWeaponStorageComponent` \| `SCR_UniversalInventoryStorageComponent`):
+`payload` для основных типов (`storageType` обязателен для операций, изменяющих инвентарное расположение):
 
 | `type` | Поля `payload` |
 | ------ | -------------- |
 | `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string \| null; `null` для корневого слота экипировки), `slot` (string \| null; обязателен при `targetContainerUid` = null), `storageType` (string) |
-| `DropEntity` | `position` `{ x, y, z }` (числа), `storageType` (string) |
+| `DropEntity` | `position` `{ x, y, z }` (числа), `angle` `{ x, y, z }` (числа), `storageType` (string) |
+| `EntityTransformChanged` | `position` `{ x, y, z }` (числа), `angle` `{ x, y, z }` (числа); без `storageType` |
 | `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null), `storageType` (string) |
 
 Остальные типы — см. [EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md).
@@ -1563,6 +1569,7 @@
         "characterUid": "char-p1",
         "payload": {
           "position": { "x": 100.5, "y": 12.0, "z": -40.25 },
+          "angle": { "x": 0.0, "y": 45.0, "z": 0.0 },
           "storageType": "SCR_CharacterInventoryStorageComponent"
         }
       },
@@ -1649,7 +1656,7 @@
 
 ### getPendingCommands
 
-Возвращает пачку команд очереди бекенд → игровой сервер. При выдаче команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Пустой `commands` — успех. Вызывается из `CommandBus::run` каждые 0.5 с. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
+Возвращает пачку команд очереди бекенд → игровой сервер **текущей игровой сессии**. Команды других сессий не выдаются. При выдаче команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Пустой `commands` — успех. Вызывается из `CommandBus::run` каждые 0.5 с. `serverSessionUid` в result не отдаётся. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
 
 **`method`:** `"command@getPendingCommands"`
 
@@ -1670,8 +1677,8 @@
 | Поле      | Тип    | Описание                                      |
 | --------- | ------ | --------------------------------------------- |
 | `uid`     | string | Идентификатор команды (для отчёта)            |
-| `type`    | string | `SpawnEntity`                                 |
-| `payload` | object | Параметры по `type`; для `SpawnEntity` — `{ "entityUid": string }` |
+| `type`    | string | `SpawnEntity` \| `DeleteEntity`               |
+| `payload` | object | Параметры по `type`; для `SpawnEntity` и `DeleteEntity` — `{ "entityUid": string }` |
 
 **Пример запроса**
 
@@ -1702,7 +1709,7 @@
       },
       {
         "uid": "cmd-002",
-        "type": "SpawnEntity",
+        "type": "DeleteEntity",
         "payload": {
           "entityUid": "ent-backpack-1"
         }
@@ -1801,5 +1808,52 @@
     "failReason": "InvalidParams"
   },
   "id": 2
+}
+```
+
+### gameStarted
+
+Игровой сервер вызывает метод при старте. Бекенд закрывает предыдущие активные сессии (`stoppedAt = now()`), регистрирует новую `ServerSession` (`startedAt = now()`, `stoppedAt = null`) и ставит в очередь CommandBus команду `SpawnEntity` для каждой сущности в мире без владельца-персонажа и без родительского контейнера (вложенные не ставятся). Одновременно активна только одна сессия. Доменных отказов нет. Подробнее: [Architecture/GameManager.md](../Architecture/GameManager.md#gamestarted), сущности: [Architecture/GameManager.Entities.md](../Architecture/GameManager.Entities.md).
+
+**`method`:** `"game@gameStarted"`
+
+**`params`**
+
+| Поле               | Тип    | Описание                                      |
+| ------------------ | ------ | --------------------------------------------- |
+| `serverSessionUid` | string | Идентификатор сессии игрового сервера |
+
+Сервер игры — в контексте API-ключа.
+
+**`result` (`GameStartedResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); при успехе сервиса — `"Ok"` |
+| `failReason` | string \| null | При `Ok` — `null`                                                        |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "game@gameStarted",
+  "params": {
+    "serverSessionUid": "session-001"
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null
+  },
+  "id": 1
 }
 ```

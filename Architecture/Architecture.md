@@ -11,6 +11,13 @@
 - [[BackendGameMutation.md]] — как бекенд принимает решение, а CommandBus применяет его в игровом мире (продажа, покупка)
 - [[../Common concepts.md]] — GameBackendManager и правило: все события с бекенда → Local EventBus
 
+## GameManager
+
+Жизненный цикл игровой сессии: регистрация `ServerSession` при старте мира (`game@gameStarted`).
+
+- [[GameManager.md]] — обзор и метод `gameStarted`
+- [[GameManager.Entities.md]] — `ServerSession`, `GameStartedResult`
+
 ## CommandBus
 
 Доставка команд бекенд → игровой сервер: опрос каждые 0.5 с, маршрутизация в целевые сервисы, отчёт `Completed` / `Fail`.
@@ -18,7 +25,7 @@
 - [[../CommandBus/CommandBus.md]] — `run`, `reportCommands`
 - [[../CommandBus/CommandBus.HttpMethods.md]] — JSON-RPC `command@getPendingCommands`, `command@reportCommands`
 - [[../CommandBus/CommandBus.Entities.md]] — `Command`, `CommandReport`, Result DTO
-- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`)
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `DeleteEntity`)
 
 ## TradeManager
 

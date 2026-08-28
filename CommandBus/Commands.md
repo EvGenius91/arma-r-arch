@@ -35,10 +35,40 @@
 
 ---
 
+### DeleteEntity
+
+**Маршрут:** CommandBus → [[../Architecture/EntityManager.md|EntityManager]] (`enqueueCommand`).
+
+**Формат в API** (`Command`):
+
+```json
+{
+  "uid": "cmd-003",
+  "type": "DeleteEntity",
+  "payload": {
+    "entityUid": "ent-can-001"
+  }
+}
+```
+
+`payload` — [[CommandBus.Entities.md#DeleteEntityPayload]].
+
+**Описание:**
+
+Удалить сущность из игрового мира по `payload.entityUid`: из инвентаря, с земли или «у другого». Команда идемпотентна и выполняется **даже при lock**; после удаления EntityManager снимает lock (`Unlock`) и очищает очередь ops по этому uid.
+
+Когда команды приходят с бекенда, CommandBus передаёт их в EntityManager. EntityManager удаляет экземпляр в мире и отправляет отчёт по **каждой** команде в `CommandBus::reportCommands`. Отказ выполнить команду из‑за локального lock запрещён — это не `FailReason`.
+
+**Возможные причины невыполнения (`FailReason`):**
+
+- Нельзя удалить сущность из мира
+
+---
+
 ## См. также
 
 - [[CommandBus.md]] — опрос бекенда, маршрутизация, `reportCommands`
 - [[CommandBus.HttpMethods.md]] — JSON-RPC `command@getPendingCommands`, `command@reportCommands`
-- [[CommandBus.Entities.md]] — `Command`, `SpawnEntityPayload`, `CommandTypeEnum`, `CommandReport`
+- [[CommandBus.Entities.md]] — `Command`, `SpawnEntityPayload`, `DeleteEntityPayload`, `CommandTypeEnum`, `CommandReport`
 - [[../Architecture/BackendGameMutation.md]] — бекенд решает, CommandBus применяет в мире
-- [[../Architecture/EntityManager.md]] — `enqueueCommand`, спавн сущностей
+- [[../Architecture/EntityManager.md]] — `enqueueCommand`, спавн и удаление сущностей

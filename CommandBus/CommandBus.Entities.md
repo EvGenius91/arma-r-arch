@@ -11,6 +11,7 @@
 enum CommandTypeEnum
 {
 	case SpawnEntity;
+	case DeleteEntity;
 }
 ```
 
@@ -19,6 +20,7 @@ enum CommandTypeEnum
 
 **Значения**
 - `SpawnEntity` — заспавнить сущность в мире.
+- `DeleteEntity` — удалить сущность из мира.
 
 **Используется в**
 [[#Command]], [[Commands.md]]
@@ -62,10 +64,10 @@ class Command
 **Свойства**
 - `uid: string` — идентификатор команды; используется в отчёте как `commandUid`.
 - `type: CommandTypeEnum` — тип команды; по нему игровой CommandBus маршрутизирует в целевой сервис.
-- `payload: object` — параметры команды; структура зависит от `type` (см. [[#SpawnEntityPayload]]).
+- `payload: object` — параметры команды; структура зависит от `type` (см. [[#SpawnEntityPayload]], [[#DeleteEntityPayload]]).
 
 **Связано**
-[[#CommandTypeEnum]], [[#SpawnEntityPayload]], [[Commands.md]]
+[[#CommandTypeEnum]], [[#SpawnEntityPayload]], [[#DeleteEntityPayload]], [[Commands.md]]
 
 **Используется в**
 [[#GetPendingCommandsResult]]
@@ -88,6 +90,25 @@ class SpawnEntityPayload
 
 **Используется в**
 [[#Command]], [[Commands.md#SpawnEntity]]
+
+### DeleteEntityPayload
+
+**Сигнатура**
+```
+class DeleteEntityPayload
+{
+	string entityUid;
+}
+```
+
+**Назначение**
+`payload` команды с `type = DeleteEntity`.
+
+**Свойства**
+- `entityUid: string` — идентификатор сущности для удаления из мира.
+
+**Используется в**
+[[#Command]], [[Commands.md#DeleteEntity]]
 
 ### CommandReport
 

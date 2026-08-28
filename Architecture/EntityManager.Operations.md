@@ -6,13 +6,13 @@
 
 ## Главные правила
 
-1. **Точка входа** — EntityManager (`enqueuePickupEntity`, `enqueueDropEntity`, `enqueueMoveEntity`, …). Инвентарь / мир / UI не ходят на бекенд напрямую и не через CharacterStateManager.
+1. **Точка входа** — EntityManager (`enqueuePickupEntity`, `enqueueDropEntity`, `enqueueMoveEntity`, `enqueueEntityTransformChanged`, …). Инвентарь / мир / UI не ходят на бекенд напрямую и не через CharacterStateManager.
 2. **Один `entityUid` — один экземпляр** в мире (перенос объекта, не клон при RPC).
 3. Ops складываются в **исходящую очередь**; на бекенд уходят **пачкой** по таймеру (~1 с) или по **barrier**.
 4. В пачке ops **обязательно сохраняют порядок** (особенно цепочка по одному uid).
-5. **Lock** в EntityLockRegistry — только пока по uid есть **in-flight** (пачка ушла, ответа ещё нет). Пока ops лишь в очереди — uid не locked: новые игровые ops по нему можно ставить в очередь (в т.ч. подбор вторым игроком после чужого дропа).
+5. **Lock** в EntityLockRegistry — только пока по uid есть блокирующая **in-flight** операция (пачка ушла, ответа ещё нет). Пока ops лишь в очереди — uid не locked. `EntityTransformChanged` является неблокирующим исключением и не создаёт lock даже в in-flight.
 6. Блокировка — **по сущности** (и узко по родителю-контейнеру на время in-flight), не глобальная очередь на весь мир.
-7. Бекенд — источник истины; отказ → откат расположения в мире. Мутации с бекенда в мир — через CommandBus ([[BackendGameMutation.md]]), не из Trade напрямую.
+7. Бекенд — источник истины; отказ блокирующей операции → откат расположения в мире. Для `EntityTransformChanged` физического отката нет: следующий снимок повторно выравнивает бекенд. Мутации с бекенда в мир — через CommandBus ([[BackendGameMutation.md]]), не из Trade напрямую.
 8. Каждая операция несёт `resetGeneration` сущности ([[EntityManager.DupeAnalyzer.md]]).
 9. Trade на время sell пишет в тот же реестр (`SellPending`) — это отдельный lock продажи, не очередь EM.
 
@@ -23,16 +23,16 @@
 ```text
 enqueue* → проверки → зафиксировать расположение в реестре (мир уже изменился для PickUp) → запись в очередь (без Lock)
          → flush: ~1 с  ИЛИ  barrier
-         → Lock затронутых uid → entity@applyOperations (порядок сохранён) → in-flight
-         → Ok / Fail → Unlock → при Fail откат расположения в мире; при необходимости следующая пачка по uid
+         → Lock затронутых uid для блокирующих ops → entity@applyOperations (порядок сохранён) → in-flight
+         → Ok / Fail → Unlock блокирующих ops → при Fail откат только блокирующих изменений; при необходимости следующая пачка по uid
 ```
 
 | Фаза | Поведение по uid |
 |------|------------------|
 | В очереди, ещё не ушло | расположение уже в мире сервера (для PickUp — сдвинул инвентарь); lock нет; новые ops (в т.ч. другого игрока) дописываются в очередь **в порядке поступления** |
-| Пачка ушла, ждём ответ (in-flight) | `EntityLockRegistry.Lock` — нельзя drop / pick / move / sell этого uid |
+| Пачка ушла, ждём ответ (in-flight) | Для блокирующих ops: `EntityLockRegistry.Lock` — нельзя drop / pick / move / sell этого uid. Один `EntityTransformChanged` lock не создаёт |
 | Ok | `Unlock`, мир совпал (или дотянуть мелочи), EventBus |
-| Fail | откат расположения по затронутым ops, `Unlock` |
+| Fail | Для блокирующих ops — откат расположения и `Unlock`; для `EntityTransformChanged` — журналирование без физического отката |
 
 ### Когда flush
 
@@ -51,8 +51,8 @@ Barrier **скоупается** по смыслу события: открыт�
 ### Пачка и группировка по uid
 
 - **Одна сетевая пачка ≠ один uid.** В одном flush могут уйти ops по нескольким uid.
-- **Сериализация и lock — по uid:** пока uid in-flight, параллельной отправки по нему нет; порядок ops одного uid в пачке и на бекенде сохраняется.
-- На бекенде пачка **не** обязана быть одной атомарной транзакцией на все uid («банка + топор + пила»). Успех / отказ — **по uid** (или по отдельным ops); админ-`removeEntity` одной банки не должен ронять остальные uid пачки.
+- **Сериализация — по uid:** порядок ops одного uid в пачке и на бекенде сохраняется. Lock и запрет параллельных блокирующих операций применяются к inventory/location ops; `EntityTransformChanged` перед flush объединяется до последнего снимка и lock не использует.
+- На бекенде пачка **не** обязана быть одной атомарной транзакцией на все uid («банка + топор + пила»). Успех / отказ — **по uid** (или по отдельным ops); админ-`DeleteEntity` одной банки не должен ронять остальные uid пачки.
 
 ---
 
@@ -64,6 +64,7 @@ Barrier **скоупается** по смыслу события: открыт�
 enqueuePickupEntity(entityUid, targetContainerUid?, characterUid, storageType, slot?)
 enqueueDropEntity(entityUid, position, characterUid, storageType)
 enqueueMoveEntity(entityUid, targetContainerUid?, characterUid, storageType, slot?)
+enqueueEntityTransformChanged(entityUid, position, angle)
 // далее по тому же шаблону:
 // enqueueEquipItem / enqueueTransferEntity / …
 ```
@@ -76,7 +77,33 @@ Trade перед `sell`: при необходимости barrier/flush по ui
 
 ---
 
-## Жизненный цикл одной операции
+## EntityTransformChanged
+
+`EntityTransformChanged` фиксирует актуальную позицию и угол сущности, которая уже находится в мире. Наблюдатель игрового мира вызывает `enqueueEntityTransformChanged(entityUid, position, angle)` при изменении хотя бы одного из этих значений.
+
+Политика очереди отличается от операций смены владения / контейнера:
+
+1. Для одного `entityUid` в pending-очереди хранится только последний неотправленный transform: новая операция заменяет предыдущую.
+2. Coalescing не пересекает операцию, меняющую тип расположения. После `DropEntity` transform остаётся после дропа; при нескольких transform после него сохраняется только последний.
+3. Если сущность подобрана в контейнер / слот, pending `EntityTransformChanged` для её прежнего положения в мире удаляется перед `PickUpEntity`.
+4. Операция уходит через общий `entity@applyOperations` и содержит `resetGeneration`, но не ставит `EntityLockRegistry` lock, не блокирует управление / движение сущности и не участвует в `InventoryOps`. Пока transform этого uid in-flight, новые снимки продолжают объединяться в pending; второй запрос по тому же uid отправляется только после ответа на первый, чтобы ответы не переупорядочили координаты.
+5. При `Fail` игровой сервер не возвращает сущность на старые координаты. Ошибка журналируется; следующий transform-снимок формирует новую попытку синхронизации.
+6. На бекенде операция допустима только для сущности в мире. Контракт: `characterUid = null`, `payload = { position, angle }`, без `storageType`.
+
+```text
+Transform A → Transform B → Transform C → flush
+pending:                         [EntityTransformChanged C]
+
+Drop → Transform A → Transform B → flush
+pending: [DropEntity, EntityTransformChanged B]
+
+Transform A → PickUp → flush
+pending: [PickUpEntity]
+```
+
+---
+
+## Жизненный цикл блокирующей операции
 
 ```text
 1. Вызов enqueueDropEntity / enqueuePickupEntity / enqueueMoveEntity / …
@@ -161,8 +188,8 @@ sequenceDiagram
 1. При необходимости barrier: flush + дождаться, пока продаваемые uid не in-flight.  
 2. Trade → EntityLockRegistry: `IsLocked(uid)`? если да — sell не слать.  
 3. Если нет — `Lock(uid, SellPending, InventoryOps, TradeManager)` (игрок не сможет `enqueueDropEntity`).  
-4. Успех sell на бекенде → удаление в мире через CommandBus `removeEntity` ([[BackendGameMutation.md]]).  
-5. `removeEntity` идемпотентен и выполняется **даже при lock**; после remove — `Unlock` и отмена pending ops EntityManager по uid.  
+4. Успех sell на бекенде → удаление в мире через CommandBus `DeleteEntity` ([[BackendGameMutation.md]]).  
+5. `DeleteEntity` идемпотентен и выполняется **даже при lock**; после `DeleteEntity` — `Unlock` и отмена pending ops EntityManager по uid.  
 
 Подробный сценарий: [[EntityLockRegistry.md#сценарий-продажа]].
 
@@ -173,9 +200,10 @@ sequenceDiagram
 | Событие | Действие EntityManager |
 |---------|-------------------------|
 | Ok операции расположения | Unlock, мир уже совпал (или дотянуть мелочи), EventBus |
-| Fail | откат расположения в мире, Unlock |
+| Fail блокирующей операции | откат расположения в мире, Unlock |
+| Fail `EntityTransformChanged` | журналировать; не откатывать физическое перемещение; следующий снимок повторит синхронизацию |
 | Fail / StaleAfterReset ([[EntityManager.DupeAnalyzer.md]]) | не двигать мир по этой ops; мир уже/будет выровнен hard-reset или сверкой |
-| CommandBus `removeEntity` | удалить экземпляр где угодно (инвентарь / земля / «у другого»), Unlock, очистить очередь ops по uid |
+| CommandBus `DeleteEntity` | удалить экземпляр где угодно (инвентарь / земля / «у другого»), Unlock, очистить очередь ops по uid |
 | CommandBus `SpawnEntity` | создать сущности в мире по команде (`enqueueCommand` → `reportCommands`) |
 
 EntityManager **не** ждёт второй вызов CharacterStateManager для удаления предмета. CharacterStateManager при необходимости обновляет проекцию/версию по событию или `CharacterStateChanged`.
@@ -186,10 +214,10 @@ EntityManager **не** ждёт второй вызов CharacterStateManager д
 
 ```text
 entityUid
-type                    // PickUpEntity | DropEntity | MoveEntity | …
+type                    // PickUpEntity | DropEntity | MoveEntity | EntityTransformChanged | …
 resetGeneration         // поколение сущности на момент отправки
-characterUid            // инициатор
-payload                 // storageType (обязателен), containerUid, slot, position, toCharacterUid, …
+characterUid            // инициатор; null для EntityTransformChanged
+payload                 // поля по type; для EntityTransformChanged: position + angle
 ```
 
 **RPC:** `entity@applyOperations` — пачка `operations[]` при flush. Полный контракт JSON-RPC: [[EntityManager.HttpMethods.md]], транспорт: [[../api/http api.md]].
@@ -224,7 +252,7 @@ payload                 // storageType (обязателен), containerUid, slo
 
 ### Кейс D — админ удалил банку, в пачке ещё топор и пила
 
-1. Команда `removeEntity(банка)` → банка исчезает, Unlock банки, ops по банке отменяются.  
+1. Команда `DeleteEntity(банка)` → банка исчезает, Unlock банки, ops по банке отменяются.  
 2. Операции топора и пилы (другие uid) обрабатываются отдельно → Ok/Fail сами по себе.
 
 ### Кейс E — банка в рюкзак, затем выброс рюкзака
@@ -249,7 +277,7 @@ payload                 // storageType (обязателен), containerUid, slo
 3. Клонирование объекта при «подборе» через RPC (два экземпляра одного uid).  
 4. Sell без `EntityLockRegistry.Lock(SellPending)` — игрок успевает выбросить предмет.  
 5. Отдельные lock внутри Trade и EntityManager вместо общего сервиса.  
-6. Отказ выполнить CommandBus `removeEntity` из‑за lock.  
+6. Отказ выполнить CommandBus `DeleteEntity` из‑за lock.  
 7. Атомарная пачка из многих uid как единственный способ commit на бекенде (хрупко при админ-delete одного предмета).  
 8. Дублировать дерево содержимого рюкзака в CharacterStateManager.  
 9. `Lock` на всё время нахождения ops в очереди (до flush) — мешает легитимной цепочке Drop→PickUp в одной пачке.  

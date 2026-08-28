@@ -23,7 +23,7 @@ EntityManager является реестром игровых сущносте�
 - регистрацию новых сущностей в БД;
 - выдачу и сохранение `uid` сущности;
 - хранение текущего положения сущности: в мире, у игрока или внутри контейнера / в слоте;
-- **синхронизацию с бекендом** изменений владения и расположения (подбор, дроп, move, экипировка, передача);
+- **синхронизацию с бекендом** изменений владения и расположения (подбор, дроп, move, экипировка, передача, изменение позиции / угла в мире);
 - заполнение инвентаря нового персонажа при спавне (`loadInventory`);
 - вызов [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight пачки (блок / разблок uid);
 - обновление связей при изменении инвентаря;
@@ -96,7 +96,7 @@ sequenceDiagram
     participant BE as Бекенд
     participant EB as LocalEventBus
 
-    World->>EM: enqueuePickup_Drop_Move
+    World->>EM: enqueuePickup_Drop_Move_Transform
     EM->>Lock: IsLocked
     EM->>EM: реестр_и_очередь
     Note over EM: flush_1с_или_barrier
@@ -127,15 +127,16 @@ sequenceDiagram
 
 Полное описание сервиса: [[EntityLockRegistry.md]].
 
-**Правило:** блокировка uid для ops EntityManager — **только через EntityLockRegistry**, и **только на время in-flight** (не на всё время очереди).
+**Правило:** блокировка uid для блокирующих ops EntityManager — **только через EntityLockRegistry**, и **только на время in-flight** (не на всё время очереди). `EntityTransformChanged` не создаёт lock.
 
 | Момент | Вызов EntityLockRegistry |
 |--------|--------------------------|
-| `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе регистрация расположения + очередь **без** Lock |
-| flush пачки (~1 с / barrier) | `Lock(…, ownerService: EntityManager)` → отправка |
+| Блокирующий `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе регистрация расположения + очередь **без** Lock |
+| `enqueueEntityTransformChanged` | обновить / заменить pending transform; lock не проверяется и не создаётся |
+| flush пачки (~1 с / barrier) | Для блокирующих ops: `Lock(…, ownerService: EntityManager)` → отправка; transform отправляется без lock |
 | Ok / Fail с бекендом | `Unlock` |
 | Уже есть `SellPending` от Trade | отказ enqueue (не выбрасывать продаваемый предмет) |
-| CommandBus `removeEntity` | удалить сущность **даже при lock** → `Unlock` → очистить очередь ops по uid |
+| CommandBus `DeleteEntity` | удалить сущность **даже при lock** → `Unlock` → очистить очередь ops по uid |
 | Hard-reset дюпов | выровнять мир → `Unlock` → очистить очередь |
 
 ```text
@@ -178,13 +179,14 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 | `PickUpEntity` | из мира → контейнер / слот персонажа |
 | `DropEntity` | из инвентаря / слота → мир |
 | `MoveEntity` | между слотами / контейнерами |
+| `EntityTransformChanged` | обновление позиции и угла сущности, которая находится в мире |
 | `EquipItem` / `UnequipItem` | надеть / снять |
 | `SwapEquipment` | обмен слотов |
 | `TransferEntity` | передача другому персонажу |
 | `SplitStack` / `MergeStack` | стеки (если есть в проекте) |
 | `DestroyEntity` | уничтожение / снятие с реестра (контракт уточняется отдельно) |
 
-Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): регистрация уже произошедшего в мире изменения + очередь; `Lock` — при flush пачки. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
+Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): регистрация уже произошедшего в мире изменения + очередь; для блокирующих ops `Lock` ставится при flush пачки. `EntityTransformChanged` отправляется без lock. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
 
 ---
 
@@ -200,7 +202,7 @@ enqueueCommand(command): void
 
 **Параметры:**
 
-- `command` — команда CommandBus, назначенная EntityManager (`SpawnEntity`; см. [[../CommandBus/Commands.md]]).
+- `command` — команда CommandBus, назначенная EntityManager (`SpawnEntity`, `DeleteEntity`; см. [[../CommandBus/Commands.md]]).
 
 **Когда вызывается:**
 
@@ -210,7 +212,8 @@ enqueueCommand(command): void
 
 1. Принимает команды, назначенные EntityManager, и ставит их в очередь на выполнение.
 2. Для `SpawnEntity`: одним запросом получает данные сущностей ([[EntityManager.HttpMethods.md#findEntitiesByUidList|entity@findEntitiesByUidList]]) и спавнит их в мире.
-3. После выполнения **обязан** вызвать [[../CommandBus/CommandBus.md#reportcommands|CommandBus::reportCommands]] со статусом по каждой команде: `Completed` или `Fail` (+ `FailReason`).
+3. Для `DeleteEntity`: удаляет сущность в мире (даже при lock), снимает lock (`Unlock`) и очищает очередь ops по uid.
+4. После выполнения **обязан** вызвать [[../CommandBus/CommandBus.md#reportcommands|CommandBus::reportCommands]] со статусом по каждой команде: `Completed` или `Fail` (+ `FailReason`).
 
 Это канал **бекенд → мир**. Не путать с `enqueuePickupEntity` / `enqueueDropEntity` / `enqueueMoveEntity` (синк **игра → бекенд**).
 
@@ -335,6 +338,32 @@ Ok → снять все lock’и этой операции. Fail → отка�
 
 ---
 
+### enqueueEntityTransformChanged
+
+**Сигнатура:**
+
+```text
+enqueueEntityTransformChanged(string entityUid, vector position, vector angle): void
+```
+
+**Параметры:**
+
+- `entityUid` — идентификатор переместившейся сущности;
+- `position` — актуальные координаты сущности в мире;
+- `angle` — актуальный угол сущности вокруг осей X, Y, Z.
+
+**Описание:**
+
+1. Вызывается наблюдателем игрового мира, когда у сущности в мире изменилась позиция и/или угол.
+2. Проверяет, что сущность зарегистрирована и находится в мире, а не в контейнере / слоте.
+3. Ставит `EntityTransformChanged` с текущим `resetGeneration`; `characterUid = null`, payload содержит только `position` и `angle`.
+4. Если для uid уже есть pending transform после последней операции смены расположения, заменяет его новым снимком.
+5. Операция отправляется через общий flush, но не ставит lock, не блокирует движение и не выполняет физический rollback при Fail. Следующий снимок повторно выравнивает бекенд.
+
+Порядок относительно `DropEntity` / `PickUpEntity` и правила coalescing: [[EntityManager.Operations.md#entitytransformchanged]].
+
+---
+
 ## Дюпы и hard-reset
 
 При нескольких экземплярах одного `entityUid` в мире бекенд инициирует анализатор: hard-reset к истине бекенда и отсечение устаревших операций через `resetGeneration` на сущность.
@@ -353,7 +382,7 @@ Ok → снять все lock’и этой операции. Fail → отка�
 6. Игнорировать `SellPending` от Trade и выбрасывать продаваемый предмет.
 7. Глобально стопорить все операции мира из‑за одной сущности.
 8. Блокировать вождение машины из‑за in-flight предмета в её инвентаре.
-9. Отказать CommandBus `removeEntity` из‑за локального lock.
+9. Отказать CommandBus `DeleteEntity` из‑за локального lock.
 
 ---
 
@@ -370,4 +399,4 @@ Ok → снять все lock’и этой операции. Fail → отка�
 - [[CharacterStateManager (черновик) 3.md]] — состояние персонажа; инвентарь только как проекция
 - [[../api/http api.md]] — транспорт HTTP JSON-RPC
 - [[../CommandBus/CommandBus.md]] — доставка команд с бекенда (`run`, `reportCommands`)
-- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`)
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `DeleteEntity`)

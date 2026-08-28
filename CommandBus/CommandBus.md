@@ -4,6 +4,8 @@
 
 Воркер опрашивает бекенд **каждые 0.5 секунды** ([[CommandBus.HttpMethods.md#getPendingCommands|command@getPendingCommands]]) и получает пачку команд, которые нужно выполнить в мире. Каждую команду CommandBus маршрутизирует в целевой сервис в игре (например [[../Architecture/EntityManager.md|EntityManager]]).
 
+При постановке в очередь команда привязывается к активной [[../Architecture/GameManager.Entities.md#ServerSession|ServerSession]]. `getPendingCommands` отдаёт только pending текущей сессии. Поле `serverSessionUid` в JSON-RPC не передаётся.
+
 Целевой сервис по результатам выполнения обязан вернуть отчёт **по каждой команде**: статус `Completed` или `Fail`; при `Fail` — `FailReason`. После получения отчёта от сервиса CommandBus отправляет отчёт на бекенд ([[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]]).
 
 HTTP-контракт: [[CommandBus.HttpMethods.md]]. Сущности: [[CommandBus.Entities.md]]. Каталог команд: [[Commands.md]].

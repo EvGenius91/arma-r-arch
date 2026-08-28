@@ -11,19 +11,19 @@ EntityManager  ──depends on──►  EntityLockRegistry
 TradeManager   ──depends on──►  EntityLockRegistry
 ```
 
-- [[EntityManager.md|EntityManager]] ставит uid в реестр через `Lock` **когда пачка ops по этому uid уходит на бекенд (in-flight)** и снимает через `Unlock` после ответа. Пока ops только в исходящей очереди (ещё не ушли) — EM **не** держит lock; см. [[EntityManager.Operations.md]].
+- [[EntityManager.md|EntityManager]] ставит uid в реестр через `Lock`, когда блокирующая ops по этому uid уходит на бекенд (in-flight), и снимает через `Unlock` после ответа. Пока ops только в исходящей очереди (ещё не ушли) — EM **не** держит lock. `EntityTransformChanged` не создаёт lock даже после отправки; см. [[EntityManager.Operations.md#entitytransformchanged]].
 - [[TradeManager.md|TradeManager]] на время продажи ставит `SellPending` в тот же реестр, чтобы EntityManager не принял дроп/передачу продаваемого uid.
 - Реестр **не** знает о содержимом контейнеров и не ходит на бекенд — только занятость `entityUid`.
 
 ## Назначение
 
-Пока сущность занята (пачка EntityManager **in-flight**, либо идёт продажа через Trade), повторный dispose / pick / sell локально запрещён:
+Пока сущность занята блокирующей операцией EntityManager **in-flight** либо продажей через Trade, повторный dispose / pick / sell локально запрещён. In-flight `EntityTransformChanged` сам по себе сущность занятой не делает:
 
 - EntityManager не даст выбросить / переложить / подобрать / передать uid, пока по нему летит пачка;
 - Trade не начнёт `sell`, если uid уже в lock (in-flight EM или чужой `SellPending`);
 - пока ops лишь в очереди EM (lock ещё нет) — второй игрок **может** подобрать предмет после дропа в мире; обе ops упорядоченно уйдут в одной пачке.
 
-Реестр **не** источник истины бекенда и **не** отменяет CommandBus: `removeEntity` с бекенда выполняется даже для заблокированного uid; после удаления запись из реестра снимается.
+Реестр **не** источник истины бекенда и **не** отменяет CommandBus: `DeleteEntity` с бекенда выполняется даже для заблокированного uid; после удаления запись из реестра снимается.
 
 ---
 
@@ -49,8 +49,8 @@ EntityManager.enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 
 | Сервис | Когда |
 |--------|--------|
-| [[EntityManager.md\|EntityManager]] | `IsLocked` на `enqueue*` (отказ, если уже in-flight / SellPending); `Lock` при уходе пачки в in-flight; `Unlock` после Ok/Fail; очистка при hard-reset / `removeEntity` |
-| [[TradeManager.md\|TradeManager]] | перед / в момент старта продажи — `IsLocked`; если свободен — `Lock(…, SellPending)`; после Fail sell — `Unlock`; после Ok sell — `Unlock` когда мир догнал / вместе с обработкой `removeEntity` |
+| [[EntityManager.md\|EntityManager]] | Для блокирующих `enqueue*`: `IsLocked`, `Lock` при уходе в in-flight и `Unlock` после ответа. `EntityTransformChanged` проходит без lock; очистка при hard-reset / `DeleteEntity` |
+| [[TradeManager.md\|TradeManager]] | перед / в момент старта продажи — `IsLocked`; если свободен — `Lock(…, SellPending)`; после Fail sell — `Unlock`; после Ok sell — `Unlock` когда мир догнал / вместе с обработкой `DeleteEntity` |
 | Мир / UI (опционально) | только `IsLocked` для подсказок; не пишут в реестр в обход менеджеров |
 
 EntityManager **не владеет** реестром как внутренней приватной структурой — он **зависит** от сервиса и вызывает его API.
@@ -104,8 +104,8 @@ IsLocked(entityUid, requiredScope?) → bool
 Снимает запись. Вызывать после завершения операции владельца lock:
 
 - EntityManager: Ok/Fail enqueue-операции;
-- Trade: Fail sell; после успешного sell — когда сущность уже не нужна в мире / после `removeEntity`;
-- всегда после CommandBus `removeEntity` и hard-reset анализатора дюпов ([[EntityManager.DupeAnalyzer.md]]), даже если lock ставил другой сервис.
+- Trade: Fail sell; после успешного sell — когда сущность уже не нужна в мире / после `DeleteEntity`;
+- всегда после CommandBus `DeleteEntity` и hard-reset анализатора дюпов ([[EntityManager.DupeAnalyzer.md]]), даже если lock ставил другой сервис.
 
 ### IsLocked
 
@@ -123,6 +123,8 @@ IsLocked(entityUid, requiredScope?) → bool
 |-------|-----------|--------------|
 | `InventoryOps` | pick / drop / move / transfer / sell этого uid | операции с другими uid; езда на технике |
 | `ContainerDispose` | выбросить / передать / снять контейнер как предмет | вождение машины, движение по миру |
+
+`EntityTransformChanged` не относится к `InventoryOps`: синхронизация transform не должна блокировать вождение, физическое движение, inventory-операции или продажу. Сам EntityLockRegistry в её жизненном цикле не вызывается.
 
 Примеры:
 
@@ -142,9 +144,9 @@ IsLocked(entityUid, requiredScope?) → bool
 2. Локально банку можно изъять из доступного инвентаря (политика игры)
 3. Trade → бекенд sell
 4a. Fail → Unlock(банка); вернуть предмет в доступность
-4b. Ok → бекенд ставит CommandBus removeEntity
+4b. Ok → бекенд ставит CommandBus DeleteEntity
        → EntityManager удаляет сущность (игнорируя lock)
-       → Unlock(банка)  // EntityManager или общий хук после remove
+       → Unlock(банка)  // EntityManager или общий хук после DeleteEntity
 ```
 
 Пока sell in-flight, игрок **не может** выбросить банку: `enqueueDropEntity` видит `IsLocked` и отказывает.
@@ -169,7 +171,7 @@ IsLocked(entityUid, requiredScope?) → bool
 1. Дублировать свой lock внутри Trade и внутри EntityManager вместо общего сервиса.
 2. Trade не вызывает `Lock` на время sell — игрок успевает сделать `enqueueDropEntity`.
 3. EntityManager игнорирует `SellPending` и выбрасывает продаваемый предмет.
-4. Отказать CommandBus `removeEntity` из‑за записи в реестре.
+4. Отказать CommandBus `DeleteEntity` из‑за записи в реестре.
 5. Глобальный lock на весь мир.
 6. Блокировать вождение машины из‑за предмета в её инвентаре.
 7. Держать lock EM на uid всё время, пока ops лежат в очереди до flush (мешает Drop→PickUp в одной пачке).
@@ -182,5 +184,5 @@ IsLocked(entityUid, requiredScope?) → bool
 - [[EntityManager.Operations.md]] — жизненный цикл операций
 - [[EntityManager.DupeAnalyzer.md]] — hard-reset снимает lock
 - [[TradeManager.md]] — sell и блокировка предмета
-- [[BackendGameMutation.md]] — removeEntity после sell
+- [[BackendGameMutation.md]] — DeleteEntity после sell
 - [[Architecture.md]] — оглавление

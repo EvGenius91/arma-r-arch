@@ -49,7 +49,7 @@ sequenceDiagram
     Trade-->>UI: успех_бекенда
     Note over UI: мир_ещё_не_изменился
     BE->>CB: команды_в_очереди
-    CB->>Entity: removeEntity(uid)
+    CB->>Entity: "DeleteEntity(uid)"
     CB->>Bank: зачисление
     Entity->>EB: событие_применено
     Bank->>EB: CashChanged
@@ -88,7 +88,7 @@ CommandBus получает от бекенда императивные ком�
 
 Воркер опрашивает бекенд каждые 0.5 секунды ([[../CommandBus/CommandBus.md]]).
 
-Команда `removeEntity` ([[../CommandBus/Commands.md]]) всегда обрабатывается сервисом, отвечающим за сущности — тем же, что удаляет предметы при уничтожении или других сценариях. TradeManager в эту цепочку не входит.
+Команда `DeleteEntity` ([[../CommandBus/Commands.md]]) всегда обрабатывается сервисом, отвечающим за сущности — тем же, что удаляет предметы при уничтожении или других сценариях. TradeManager в эту цепочку не входит.
 
 ### EventBus — локальные события на игровом сервере
 

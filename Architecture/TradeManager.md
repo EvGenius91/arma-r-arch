@@ -8,7 +8,7 @@
 2. `IsLocked(entityUid)` — если уже занято (пачка EM in-flight) → sell локально не начинать.
 3. `Lock(entityUid, reason: SellPending, scope: InventoryOps, ownerService: TradeManager)` — игрок не сможет `enqueueDropEntity` / передать предмет, пока нет ответа бекенда.
 4. Fail sell → `Unlock`.
-5. Ok sell → мир чистит CommandBus `removeEntity` ([[BackendGameMutation.md]]); затем `Unlock` (после удаления сущности).
+5. Ok sell → мир чистит CommandBus `DeleteEntity` ([[BackendGameMutation.md]]); затем `Unlock` (после удаления сущности).
 
 Так продажа и операции EntityManager делят один реестр блокировок.
 

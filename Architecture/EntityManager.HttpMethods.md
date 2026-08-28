@@ -143,9 +143,9 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
 
 **Описание**
 
-1. Бекенд возвращает сущности из реестра по переданным uid.
+1. Бекенд возвращает сущности из реестра по переданным uid **вместе со всеми вложенными потомками** (по `parentContainerUid`) **плоским списком**. Родителей вверх по дереву не подтягивает. Вложенность клиент восстанавливает по `parentContainerUid` / `inventorySlotUid`.
 2. Отсутствующие uid **пропускаются** — это не ошибка и не `Fail`.
-3. Порядок элементов в `entities` соответствует порядку запрошенных uid (только найденные).
+3. Порядок: сначала найденные из `uidList` в порядке запроса; затем потомки волнами BFS. Если uid уже в результате (запрошен явно или найден как потомок), второй раз не добавляется.
 4. Пустой `uidList` → пустой `entities` (штатный успех).
 5. Скрытые сущности в результат не попадают.
 6. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `FindEntitiesByUidListResult` со `status = Ok`.
@@ -170,13 +170,13 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
   "jsonrpc": "2.0",
   "method": "entity@findEntitiesByUidList",
   "params": {
-    "uidList": ["ent-can-001", "ent-missing", "ent-backpack-1"]
+    "uidList": ["ent-backpack-1", "ent-missing"]
   },
   "id": 2
 }
 ```
 
-**Ответ — успех (найденные; отсутствующий uid пропущен, порядок сохранён)**
+**Ответ — успех (рюкзак и вложенное содержимое плоским списком; отсутствующий uid пропущен)**
 
 ```json
 {
@@ -186,22 +186,22 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
     "failReason": null,
     "entities": [
       {
-        "uid": "ent-can-001",
-        "prefabName": "Food_Can",
-        "isContainer": false,
-        "position": null,
-        "parentContainerUid": "ent-backpack-1",
-        "inventorySlotUid": null,
-        "ownerCharacterUid": "char-42",
-        "storageType": "SCR_CharacterInventoryStorageComponent"
-      },
-      {
         "uid": "ent-backpack-1",
         "prefabName": "Backpack_01",
         "isContainer": true,
         "position": null,
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
+        "ownerCharacterUid": "char-42",
+        "storageType": "SCR_CharacterInventoryStorageComponent"
+      },
+      {
+        "uid": "ent-can-001",
+        "prefabName": "Food_Can",
+        "isContainer": false,
+        "position": null,
+        "parentContainerUid": "ent-backpack-1",
+        "inventorySlotUid": null,
         "ownerCharacterUid": "char-42",
         "storageType": "SCR_CharacterInventoryStorageComponent"
       }
@@ -262,7 +262,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 | `entityUid` | string | Идентификатор сущности |
 | `type` | string | Тип операции (см. каталог ниже) |
 | `resetGeneration` | int | Поколение сущности на момент отправки |
-| `characterUid` | string | Персонаж-инициатор (как в `enqueue*`) |
+| `characterUid` | string \| null | Персонаж-инициатор (как в `enqueue*`); `null` для системных операций без персонажа |
 | `payload` | object | Поля, зависящие от `type` |
 
 ### Каталог `type`
@@ -272,6 +272,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 | `PickUpEntity` | из мира → контейнер / слот |
 | `DropEntity` | из инвентаря / слота → мир |
 | `MoveEntity` | между слотами / контейнерами |
+| `EntityTransformChanged` | изменение позиции и/или угла сущности в мире |
 | `EquipItem` | надеть |
 | `UnequipItem` | снять |
 | `SwapEquipment` | обмен слотов |
@@ -282,7 +283,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 ### `payload` по типам
 
-Общее обязательное поле `payload` для операций расположения (в т.ч. PickUp / Move / Drop):
+Поле `storageType` обязательно для операций, изменяющих инвентарное расположение (PickUp / Move / Drop):
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -301,7 +302,17 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `position` | object | Координаты дропа: `{ x: number, y: number, z: number }` |
+| `angle` | object | Угол дропа вокруг осей: `{ x: number, y: number, z: number }` |
 | `storageType` | string | Тип хранилища (обязателен) |
+
+**`EntityTransformChanged`**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `position` | object | Новые координаты сущности в мире: `{ x: number, y: number, z: number }` |
+| `angle` | object | Новый угол сущности вокруг осей: `{ x: number, y: number, z: number }` |
+
+Для `EntityTransformChanged` поле `characterUid` равно `null`, а `storageType` в `payload` не передаётся. Операция допустима только для сущности, которая находится в мире, и обновляет `position` и `angle` одной согласованной парой.
 
 **`TransferEntity`**
 
@@ -328,7 +339,8 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 4. Пачка **не** атомарна по всем uid: отказ по uid A не откатывает уже применённые ops по uid B.
 5. Второй одновременный успешный take одной сущности → `AlreadyTaken`.
 6. Если `op.resetGeneration` не совпадает с текущим поколением сущности на бекенде → `StaleAfterReset`, мир по этой ops не двигать ([[EntityManager.DupeAnalyzer.md]]).
-7. Этот RPC обновляет истину владения / контейнера / позиции на бекенде. Мутации игрового мира с бекенда (спавн, `removeEntity` и т.п.) — через CommandBus ([[BackendGameMutation.md]]), не вместо этого метода.
+7. Этот RPC обновляет истину владения / контейнера / позиции на бекенде. Мутации игрового мира с бекенда (спавн, `DeleteEntity` и т.п.) — через CommandBus ([[BackendGameMutation.md]]), не вместо этого метода.
+8. Для `EntityTransformChanged` игровой сервер не откатывает физическое перемещение при `Fail`: ошибка журналируется, а следующий снимок transform повторно выравнивает состояние бекенда.
 
 ### Результат (`ApplyEntityOperationsResult`)
 
@@ -347,7 +359,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 Индексация **1:1** с входным `operations[]` (без дублирования `entityUid` в результате — идентификация по индексу).
 
-Игровой сервер по индексам откатывает расположение в мире только для упавших ops и снимает lock затронутых uid ([[EntityManager.Operations.md]]).
+Игровой сервер по индексам откатывает расположение в мире только для упавших блокирующих ops и снимает lock затронутых uid. Для `EntityTransformChanged` физического отката и lock нет ([[EntityManager.Operations.md#entitytransformchanged]]).
 
 ### Причины отказа на уровне запроса (`failReason`)
 
@@ -366,6 +378,32 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 ---
 
 ## Примеры
+
+### Запрос — изменение transform сущности в мире
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@applyOperations",
+  "params": {
+    "operations": [
+      {
+        "entityUid": "vehicle-001",
+        "type": "EntityTransformChanged",
+        "resetGeneration": 0,
+        "characterUid": null,
+        "payload": {
+          "position": { "x": 245.5, "y": 18.25, "z": -91.0 },
+          "angle": { "x": 0.0, "y": 127.5, "z": 0.0 }
+        }
+      }
+    ]
+  },
+  "id": 41
+}
+```
+
+Успех возвращает элемент `{ "status": "Ok", "failReason": null }`. Для этой операции ожидаемы стандартные отказы `EntityNotFound`, `StaleAfterReset` и `InvalidLocation` (например, если сущность уже находится в контейнере / слоте).
 
 ### Запрос — Drop затем PickUp одной банки
 

@@ -16,6 +16,7 @@
 |-------------------------|------------------|----------|
 | TradeManager | TradeService | `Contracts/TradeService/` |
 | BankingManager | BankingService | `Contracts/BankingService/` |
+| GameManager | GameService | `Contracts/GameService/` — RPC `game@gameStarted` ([[../Architecture/GameManager.md]], [[../Architecture/GameManager.Entities.md]]) |
 | EntityManager | EntityRegistryService | `Contracts/EntityRegistryService/` — RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations` ([[../Architecture/EntityManager.HttpMethods.md]], [[../Architecture/EntityManager.Entities.md]]) |
 | CommandBus | CommandService | `Contracts/CommandService/` — RPC `command@getPendingCommands`, `command@reportCommands` ([[../CommandBus/CommandBus.HttpMethods.md]], [[../CommandBus/CommandBus.Entities.md]]) |
 
