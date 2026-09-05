@@ -200,6 +200,8 @@ buy(string buyCardUid): [[TradeManager.Entities.md#BuyStatus]]
 
 Допустимо, что `buy` вернёт `Fail`, даже если предыдущий снимок корзины показывал пустой `buyFailReasons` (гонка состояния).
 
+При фактической доставке ящиком (`InNearCrate`) или техникой (`NearVehicleSpawnPosition`) на созданную сущность (ящик или каждая единица техники) вешается закрытый замок типа `character` с uid покупателя. В мир уходит `SetLockEntity` в том же блоке, что `SpawnEntity`. Инвентарная доставка замок не создаёт.
+
 **Проверки**
 - Совместимость `BuyCardTypeEnum` и `DeliveryMethod`.
 - Наличие достаточного количества денег: сумма к оплате = `totalSum` корзины.

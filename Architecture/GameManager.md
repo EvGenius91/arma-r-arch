@@ -29,7 +29,10 @@ gameStarted(string serverSessionUid): [[GameManager.Entities.md#GameStartedResul
 
 Доменных отказов нет. Невалидные params — отказ на уровне запроса (`InvalidParams`), не `failReason` сервиса.
 
-После регистрации сессии бекенд ставит в очередь CommandBus команду `SpawnEntity` для каждой сущности в мире без владельца-персонажа и без родительского контейнера. Вложенные предметы отдельными командами не ставятся: игра подтягивает их через `entity@findEntitiesByUidList` при спавне контейнера. Предметы персонажа материализуются через `loadInventory`.
+После регистрации сессии бекенд ставит в очередь CommandBus:
+
+- команду `AddSafeZone` для каждой зоны из `SafeZoneService.findAllSafeZones` ([[SafeZoneService.md]], [[../CommandBus/Commands.md#AddSafeZone]]);
+- команду `SpawnEntity` для каждой сущности в мире без владельца-персонажа и без родительского контейнера. Если у сущности есть замок — в том же блоке `SetLockEntity`; если задан непустой `ownerUidList` — в том же блоке `SetEntityOwner`. Вложенные предметы отдельными командами не ставятся: игра подтягивает их через `entity@findEntitiesByUidList` при спавне контейнера. Предметы персонажа материализуются через `loadInventory`.
 
 **Результат**
 - При успехе возвращает `status = Ok`, `failReason = null`.
@@ -38,4 +41,4 @@ gameStarted(string serverSessionUid): [[GameManager.Entities.md#GameStartedResul
 - Доменных отказов нет.
 
 **Связано**
-[[GameManager.Entities.md#ServerSession]], [[GameManager.Entities.md#GameStartedResult]], [[../CommandBus/Commands.md]]
+[[GameManager.Entities.md#ServerSession]], [[GameManager.Entities.md#GameStartedResult]], [[../CommandBus/Commands.md]], [[SafeZoneService.md]]

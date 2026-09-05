@@ -25,7 +25,7 @@
 - [[../CommandBus/CommandBus.md]] — `run`, `reportCommands`
 - [[../CommandBus/CommandBus.HttpMethods.md]] — JSON-RPC `command@getPendingCommands`, `command@reportCommands`
 - [[../CommandBus/CommandBus.Entities.md]] — `Command`, `CommandReport`, Result DTO
-- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `DeleteEntity`)
+- [[../CommandBus/Commands.md]] — каталог команд (`SpawnEntity`, `DeleteEntity`, `ParsePrefab`, `SetLockEntity`, `ChangeLockStatus`, `AddSafeZone`, `SetEntityOwner`, `SetAccessByType`)
 
 ## TradeManager
 
@@ -49,6 +49,28 @@
 Отдельный сервис локальных блокировок `entityUid`. От него зависят EntityManager и TradeManager.
 
 - [[EntityLockRegistry.md]] — API Lock / Unlock / IsLocked; EntityManager блокирует uid на время in-flight пачки; Trade — SellPending при продаже
+
+## SafeZoneService
+
+Игровой сервис списка safe-zone и правил доступа по `ownerUidList`. В зоне доступ к сущности с непустым `ownerUidList` имеют только эти персонажи, независимо от замка. Бекенд хранит зоны; в мир они попадают командой CommandBus `AddSafeZone`.
+
+- [[SafeZoneService.md]] — `TSM_SafeZoneService.isInSafeZone`, `TSM_EntitySafeZone.isAccess`, `TSM_EntityProps.ownerUidList`
+- [[SafeZoneService.Entities.md]] — `TSM_SafeZone`
+
+## AccessService
+
+Игровой сервис карты разрешений на действия над сущностью (`GetIn`, инвентарь, замок). Бекенд — источник истины; карта заполняется только командой CommandBus `SetAccessByType`. Чтение — `IsCan` (клиент через `TSM_AccessComponent`).
+
+- [[AccessService.md]] — `TSM_AccessService.IsCan`, приём `SetAccessByType`
+- [[AccessService.Entities.md]] — `AccessPermissionEnum`, грант
+
+## VehicleService
+
+Доменный сервис техники на бекенде: поиск по последнему водителю и/или радиусу в мире. Не реестр сущностей — положение и владение техники хранит EntityManager; `entityUid` = `EntityItem.uid`.
+
+- [[VehicleService.md]] — обзор, `findVehicle`, `applyOperations`, `registerVehicle`
+- [[VehicleService.Entities.md]] — `Vehicle`, `VehicleFilter`, `PositionRadiusFilter`, `VehicleOperation`
+- [[VehicleService.HttpMethods.md]] — JSON-RPC `vehicle@applyOperations`
 
 ## EntityManager
 

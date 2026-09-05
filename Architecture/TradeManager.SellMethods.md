@@ -35,7 +35,8 @@ TradeManager возвращает актуальный снимок корзин
 **Position-level проверки** (в `SellCardPosition.sellFailReasons`):
 - владение предметами (`CannotSellItemNotOwnedByCharacter`);
 - доступность продажи (`CannotSellEntity`, `CannotSellEntityInShop`);
-- превышение инвентаря (`QuantityExceedsInventory`).
+- превышение инвентаря (`QuantityExceedsInventory`);
+- непустой контейнер (`ContainerIsNotEmpty`).
 
 **Агрегация `ErrorInPosition`:** если нативных cart-level причин нет, но хотя бы у одной позиции `sellFailReasons` не пуст — в `SellCard.sellFailReasons` добавляется `ErrorInPosition`.
 
@@ -115,6 +116,8 @@ getInventoryForSell(string characterUid, string shopUid, bool isExcludeNotAvaila
 
 `quantity` в каждой строке — фактическое количество в инвентаре; до успешного [[#sell]] не уменьшается из‑за позиций в корзине. Повторный вызов после переключения режима покупки/продажи не требует клиентской синхронизации `entityUid`.
 
+Пустые и непустые контейнеры одного `prefabName` — разные строки: у непустых в `sellFailReasons` есть `ContainerIsNotEmpty`, в `name` суффикс ` (не пустой)`.
+
 **Результат**
 - При успехе возвращает `status = Ok` и заполненный `inventoryForSell` (в т.ч. `positions` и `totalAmount`).
 - При отказе возвращает `status = Fail`, `failReason` из [[TradeManager.Entities.md#GetInventoryForSellFailReasonEnum]]; `inventoryForSell` не используется.
@@ -146,6 +149,7 @@ TradeManager по `inventoryPositionUid` добавляет или обновл�
 - Суммарное количество добавляемых и уже учтённых в [[TradeManager.Entities.md#SellCard]] сущностей того же агрегата не должно превышать `quantity` строки инвентаря (иначе `CannotAddQuantityExceedsInventory`).
 - Предметы агрегата должны быть доступны для продажи.
 - Продажа должна быть разрешена в текущем магазине: у [[TradeManager.Entities.md#SellCard]] с идентификатором `sellCardUid` поле `shopUid` должно входить в `allowedShopUids` для добавляемого агрегата.
+- Нельзя добавить непустой контейнер (`ContainerIsNotEmpty`).
 
 **Причины отказа (`failReason`)**
 - `CannotAddInventoryPositionNotFound`
@@ -153,6 +157,7 @@ TradeManager по `inventoryPositionUid` добавляет или обновл�
 - `CannotUseNonPositiveQuantity`
 - `CannotSellEntity`
 - `CannotSellEntityInShop`
+- `ContainerIsNotEmpty`
 
 **Результат**
 - При успехе возвращает `status = Ok` и `positionUid` (строка [[TradeManager.Entities.md#SellCardPosition]], созданная или обновлённая после учёта сущностей).

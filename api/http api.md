@@ -1654,9 +1654,210 @@
 }
 ```
 
+### applyOperations (VehicleService)
+
+Принимает упорядоченную пачку операций техники. Пачка не атомарна: транзакция на одну ops; после отказа по `entityUid` следующие ops того же uid не применяются. Подробнее: [Architecture/VehicleService.HttpMethods.md](../Architecture/VehicleService.HttpMethods.md#applyoperations), сущности: [Architecture/VehicleService.Entities.md](../Architecture/VehicleService.Entities.md).
+
+**`method`:** `"vehicle@applyOperations"`
+
+**`params`**
+
+| Поле         | Тип   | Описание                                                                 |
+| ------------ | ----- | ------------------------------------------------------------------------ |
+| `operations` | array | Непустой упорядоченный список `VehicleOperation` (порядок = порядок apply) |
+
+Элемент `operations`:
+
+| Поле                 | Тип    | Описание                                      |
+| -------------------- | ------ | --------------------------------------------- |
+| `entityUid`          | string | Идентификатор сущности техники                |
+| `type`               | string | Сейчас только `"changeDriver"`                |
+| `driverCharacterUid` | string | Персонаж на месте водителя                    |
+
+Поля без вложенного `payload`. Неизвестный `type` — request-level `InvalidParams`.
+
+**`result` (`ApplyVehicleOperationsResult`)**
+
+| Поле               | Тип            | Описание                                                                 |
+| ------------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`           | string         | `"Ok"` — пачка обработана (в т.ч. с частичными Fail по ops); `"Fail"` — отказ на уровне запроса |
+| `failReason`       | string \| null | При request Fail: `"EmptyOperations"`, `"InvalidParams"`; при `Ok` — `null` |
+| `operationResults` | array \| null  | При `Ok`: массив той же длины и порядка, что `operations`; при Fail — `null` |
+
+Элемент `operationResults`:
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"`                                                      |
+| `failReason` | string \| null | При Fail: `"VehicleNotFound"`, `"UnsupportedOperationType"`; при Ok — `null` |
+
+Индексация 1:1 с входным `operations[]`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "vehicle@applyOperations",
+  "params": {
+    "operations": [
+      {
+        "entityUid": "vehicle-001",
+        "type": "changeDriver",
+        "driverCharacterUid": "char-42"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Ok", "failReason": null }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — отказ операции (техника не найдена)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "operationResults": [
+      { "status": "Fail", "failReason": "VehicleNotFound" }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — отказ на уровне запроса (пустая пачка)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "EmptyOperations",
+    "operationResults": null
+  },
+  "id": 1
+}
+```
+
+### getPendingCommandBlocks
+
+Возвращает пачку **блоков** команд очереди бекенд → игровой сервер **текущей игровой сессии**. Блоки других сессий не выдаются. При выдаче блок и его команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Команды внутри блока выполняются в порядке массива `commands`. Пустой `commandBlocks` — успех. Вызывается из `CommandBus::run` каждые 0.5 с. `serverSessionUid` в result не отдаётся. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommandblocks), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
+
+**`method`:** `"command@getPendingCommandBlocks"`
+
+**`params`**
+
+Нет (пустой объект `{}`). Сервер игры — в контексте API-ключа.
+
+**`result` (`GetPendingCommandBlocksResult`)**
+
+| Поле            | Тип            | Описание                                                                 |
+| --------------- | -------------- | ------------------------------------------------------------------------ |
+| `status`        | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`); при успехе сервиса — `"Ok"` |
+| `failReason`    | string \| null | При `Ok` — `null`                                                        |
+| `commandBlocks` | array \| null  | При `Ok`: массив `CommandBlock` (может быть пустым); при `Fail` — `null` |
+
+Элемент `commandBlocks` (`CommandBlock`):
+
+| Поле       | Тип   | Описание                                              |
+| ---------- | ----- | ----------------------------------------------------- |
+| `uid`      | string | Идентификатор блока                                   |
+| `commands` | array  | Непустой список `Command` в порядке выполнения        |
+
+Элемент `commands` (`Command`):
+
+| Поле      | Тип    | Описание                                      |
+| --------- | ------ | --------------------------------------------- |
+| `uid`     | string | Идентификатор команды (для отчёта)            |
+| `type`    | string | `SpawnEntity` \| `DeleteEntity` \| `ParsePrefab` \| `SetLockEntity` \| `ChangeLockStatus` \| `AddSafeZones` \| `SetEntityOwner` \| `SetAccessByType` |
+| `payload` | object | Параметры по `type`; для `SpawnEntity` и `DeleteEntity` — `{ "entityUid": string }`; для `ParsePrefab` — `{ "prefabList": string[] }`; для `SetLockEntity` — `{ "entityUid": string, "lockEntityUid": string, "lockType": string, "isLocked": bool }`; для `ChangeLockStatus` — `{ "lockUid": string, "isLocked": bool }`; для `AddSafeZones` — `{ "safeZoneUid": string, "safeZoneName": string, "centerPosition": { "x": number, "y": number, "z": number }, "radius": number }`; для `SetEntityOwner` — `{ "entityUid": string, "ownerUid": string }`; для `SetAccessByType` — `{ "entityUid": string, "permissionType": string, "characterUidList": string[] \| null }` |
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "command@getPendingCommandBlocks",
+  "params": {},
+  "id": 1
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "commandBlocks": [
+      {
+        "uid": "blk-001",
+        "commands": [
+          {
+            "uid": "cmd-001",
+            "type": "SpawnEntity",
+            "payload": {
+              "entityUid": "ent-door-001"
+            }
+          },
+          {
+            "uid": "cmd-002",
+            "type": "SetLockEntity",
+            "payload": {
+              "entityUid": "ent-door-001",
+              "lockEntityUid": "lk01",
+              "lockType": "character",
+              "isLocked": false
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Пример ответа — успех (пустая очередь)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null,
+    "commandBlocks": []
+  },
+  "id": 1
+}
+```
+
 ### getPendingCommands
 
-Возвращает пачку команд очереди бекенд → игровой сервер **текущей игровой сессии**. Команды других сессий не выдаются. При выдаче команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Пустой `commands` — успех. Вызывается из `CommandBus::run` каждые 0.5 с. `serverSessionUid` в result не отдаётся. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
+**Deprecated.** Игра не должна вызывать этот метод. Замена — [getPendingCommandBlocks](#getpendingcommandblocks).
+
+Возвращает пачку одиночных команд очереди бекенд → игровой сервер **текущей игровой сессии** (без блока). Команды других сессий и команды внутри блоков не выдаются. При выдаче команды переходят в in-flight (повторный poll не отдаёт их до отчёта). Пустой `commands` — успех. `serverSessionUid` в result не отдаётся. Подробнее: [CommandBus/CommandBus.HttpMethods.md](../CommandBus/CommandBus.HttpMethods.md#getpendingcommands), сущности: [CommandBus/CommandBus.Entities.md](../CommandBus/CommandBus.Entities.md).
 
 **`method`:** `"command@getPendingCommands"`
 
@@ -1677,8 +1878,8 @@
 | Поле      | Тип    | Описание                                      |
 | --------- | ------ | --------------------------------------------- |
 | `uid`     | string | Идентификатор команды (для отчёта)            |
-| `type`    | string | `SpawnEntity` \| `DeleteEntity`               |
-| `payload` | object | Параметры по `type`; для `SpawnEntity` и `DeleteEntity` — `{ "entityUid": string }` |
+| `type`    | string | `SpawnEntity` \| `DeleteEntity` \| `ParsePrefab` \| `SetLockEntity` \| `ChangeLockStatus` \| `AddSafeZones` \| `SetEntityOwner` \| `SetAccessByType` |
+| `payload` | object | Параметры по `type`; для `SpawnEntity` и `DeleteEntity` — `{ "entityUid": string }`; для `ParsePrefab` — `{ "prefabList": string[] }`; для `SetLockEntity` — `{ "entityUid": string, "lockEntityUid": string, "lockType": string, "isLocked": bool }`; для `ChangeLockStatus` — `{ "lockUid": string, "isLocked": bool }`; для `AddSafeZones` — `{ "safeZoneUid": string, "safeZoneName": string, "centerPosition": { "x": number, "y": number, "z": number }, "radius": number }`; для `SetEntityOwner` — `{ "entityUid": string, "ownerUid": string }`; для `SetAccessByType` — `{ "entityUid": string, "permissionType": string, "characterUidList": string[] \| null }` |
 
 **Пример запроса**
 
@@ -1813,7 +2014,7 @@
 
 ### gameStarted
 
-Игровой сервер вызывает метод при старте. Бекенд закрывает предыдущие активные сессии (`stoppedAt = now()`), регистрирует новую `ServerSession` (`startedAt = now()`, `stoppedAt = null`) и ставит в очередь CommandBus команду `SpawnEntity` для каждой сущности в мире без владельца-персонажа и без родительского контейнера (вложенные не ставятся). Одновременно активна только одна сессия. Доменных отказов нет. Подробнее: [Architecture/GameManager.md](../Architecture/GameManager.md#gamestarted), сущности: [Architecture/GameManager.Entities.md](../Architecture/GameManager.Entities.md).
+Игровой сервер вызывает метод при старте. Бекенд закрывает предыдущие активные сессии (`stoppedAt = now()`), регистрирует новую `ServerSession` (`startedAt = now()`, `stoppedAt = null`) и ставит в очередь CommandBus команду `AddSafeZone` для каждой safe-zone, затем блок `SpawnEntity` (и `SetLockEntity`, если у сущности есть замок; и `SetEntityOwner`, если задан `ownerUid`) для каждой сущности в мире без владельца-персонажа и без родительского контейнера (вложенные не ставятся). Одновременно активна только одна сессия. Доменных отказов нет. Подробнее: [Architecture/GameManager.md](../Architecture/GameManager.md#gamestarted), сущности: [Architecture/GameManager.Entities.md](../Architecture/GameManager.Entities.md).
 
 **`method`:** `"game@gameStarted"`
 
@@ -1855,5 +2056,133 @@
     "failReason": null
   },
   "id": 1
+}
+```
+
+### lock
+
+Закрывает замок на сущности. Право проверяется по типу замка: персонаж в ключах, ключ-сущность в инвентаре или пин-код. Уже закрытый замок — успех. Подробнее: [Architecture/LockManager.md](../Architecture/LockManager.md#lock), сущности: [Architecture/LockManager.Entities.md](../Architecture/LockManager.Entities.md).
+
+**`method`:** `"lock@lock"`
+
+**`params`**
+
+| Поле                | Тип            | Описание                                                                 |
+| ------------------- | -------------- | ------------------------------------------------------------------------ |
+| `lockUid`           | string         | Идентификатор замка                                                      |
+| `actorCharacterUid` | string \| null | Персонаж, который закрывает замок; обязателен для типов `character` и `keyEntity` |
+| `pinCode`           | string \| null | Пин-код; обязателен для типа `pinCode`                                   |
+
+**`result` (`LockResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                              |
+| `failReason` | string \| null | При `Fail`: см. `LockFailReasonEnum`; при `Ok` — `null`                  |
+
+Причины отказа (`failReason`): `LockNotFound`, `ActorRequired`, `KeyNotFoundInInventory`, `ActorNotInCharacterKeys`, `PinCodeMismatch`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "lock@lock",
+  "params": {
+    "lockUid": "lk01",
+    "actorCharacterUid": "char-42",
+    "pinCode": null
+  },
+  "id": 13
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null
+  },
+  "id": 13
+}
+```
+
+**Пример ответа — отказ (замок не найден)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "LockNotFound"
+  },
+  "id": 13
+}
+```
+
+### unlock
+
+Открывает замок на сущности. Право проверяется так же, как у [lock](#lock). Уже открытый замок — успех. Подробнее: [Architecture/LockManager.md](../Architecture/LockManager.md#unlock), сущности: [Architecture/LockManager.Entities.md](../Architecture/LockManager.Entities.md).
+
+**`method`:** `"lock@unlock"`
+
+**`params`**
+
+| Поле                | Тип            | Описание                                                                 |
+| ------------------- | -------------- | ------------------------------------------------------------------------ |
+| `lockUid`           | string         | Идентификатор замка                                                      |
+| `actorCharacterUid` | string \| null | Персонаж, который открывает замок; обязателен для типов `character` и `keyEntity` |
+| `pinCode`           | string \| null | Пин-код; обязателен для типа `pinCode`                                   |
+
+**`result` (`UnlockResult`)**
+
+| Поле         | Тип            | Описание                                                                 |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `status`     | string         | `"Ok"` или `"Fail"` (`OperationStatusEnum`)                              |
+| `failReason` | string \| null | При `Fail`: см. `LockFailReasonEnum`; при `Ok` — `null`                  |
+
+Причины отказа (`failReason`): `LockNotFound`, `ActorRequired`, `KeyNotFoundInInventory`, `ActorNotInCharacterKeys`, `PinCodeMismatch`.
+
+**Пример запроса**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "lock@unlock",
+  "params": {
+    "lockUid": "lk01",
+    "actorCharacterUid": null,
+    "pinCode": "1234"
+  },
+  "id": 14
+}
+```
+
+**Пример ответа — успех**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Ok",
+    "failReason": null
+  },
+  "id": 14
+}
+```
+
+**Пример ответа — отказ (пин не совпал)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "Fail",
+    "failReason": "PinCodeMismatch"
+  },
+  "id": 14
 }
 ```

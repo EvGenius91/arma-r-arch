@@ -535,6 +535,7 @@ enum SellCardPositionFailReasonEnum
 	case CannotSellEntityInShop;
 	case CannotSellItemNotOwnedByCharacter;
 	case QuantityExceedsInventory;
+	case ContainerIsNotEmpty;
 }
 ```
 
@@ -546,6 +547,7 @@ enum SellCardPositionFailReasonEnum
 - `CannotSellEntityInShop` - предмет нельзя продать в текущем магазине.
 - `CannotSellItemNotOwnedByCharacter` - предмет не принадлежит персонажу.
 - `QuantityExceedsInventory` - `quantity` позиции превышает доступное количество в инвентаре.
+- `ContainerIsNotEmpty` - контейнер непустой: в нём есть вложенные предметы; такую строку нельзя продать, пока контейнер не опустеет.
 
 **Используется в**
 [[#SellCardPosition]], [[#InventoryProductPosition]], [[#ChangeSellCardPositionQuantityFailReasonEnum]]
@@ -680,6 +682,7 @@ enum AddToSellCardFailReasonEnum
 	case CannotUseNonPositiveQuantity;
 	case CannotSellEntity;
 	case CannotSellEntityInShop;
+	case ContainerIsNotEmpty;
 }
 ```
 
@@ -692,6 +695,7 @@ enum AddToSellCardFailReasonEnum
 - `CannotUseNonPositiveQuantity` - количество должно быть больше 0.
 - `CannotSellEntity` - сущности агрегата нельзя продать ни в одном магазине.
 - `CannotSellEntityInShop` - сущности агрегата нельзя продать в текущем магазине.
+- `ContainerIsNotEmpty` - агрегат — непустые контейнеры; в корзину нельзя добавить контейнер, в котором есть вложенные предметы.
 
 **Используется в**
 [[#AddToSellCardResult]]
@@ -1025,13 +1029,13 @@ class InventoryProductPosition
 Одна агрегированная строка снимка инвентаря для продажи: идентификатор строки, префаб, фактическое количество в инвентаре, цена выкупа за единицу и сумма по строке в контексте `shopUid`, причины недоступности к продаже и список разрешённых магазинов. Симметрия с [[#ShopProduct]]: `uid` передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`, `unitPrice` — цена за единицу в контексте магазина.
 
 **Свойства**
-- `uid: string` - стабильный идентификатор агрегированной строки в контексте `(characterUid, shopUid, ключ агрегации)`; тот же id, что передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`. Стабилен между повторными вызовами [[TradeManager.SellMethods.md#getInventoryForSell]], пока не меняется состав агрегата (по умолчанию ключ агрегации = `prefabName`).
-- `name: string` - отображаемое имя (как у [[#ShopProduct]]; источник — по правилам проекта).
+- `uid: string` - стабильный идентификатор агрегированной строки в контексте `(characterUid, shopUid, ключ агрегации)`; тот же id, что передаётся в [[TradeManager.SellMethods.md#addToSellCard]] как `inventoryPositionUid`. Стабилен между повторными вызовами [[TradeManager.SellMethods.md#getInventoryForSell]], пока не меняется состав агрегата. Ключ агрегации = `prefabName`; пустые и непустые контейнеры одного префаба — разные строки (у непустых ключ дополняется признаком непустого контейнера).
+- `name: string` - отображаемое имя (как у [[#ShopProduct]]; источник — по правилам проекта). У строки непустых контейнеров в конце добавляется суффикс ` (не пустой)`.
 - `prefabName: string` - имя префаба для строки.
 - `quantity: int` - фактическое количество единиц в агрегате у персонажа в инвентаре. До успешного [[TradeManager.SellMethods.md#sell]] не уменьшается из‑за сущностей, уже учтённых в [[#SellCard]].
 - `unitPrice: int` - цена выкупа за единицу в контексте магазина из [[TradeManager.SellMethods.md#getInventoryForSell]] (в минимальных денежных единицах мира / условных единицах — по правилам проекта; тот же смысл, что у [[#ShopProduct]] `unitPrice`).
 - `lineSum: int` - сумма выкупа по строке с учётом `quantity` (`unitPrice * quantity`; те же единицы, что поле `lineSum` у [[#SellCardPosition]]).
-- `sellFailReasons: SellCardPositionFailReasonEnum[]` - причины недоступности продажи; на уровне строки инвентаря используются `CannotSellEntity`, `CannotSellEntityInShop`. Пустой массив означает, что строка доступна к продаже в текущем контексте.
+- `sellFailReasons: SellCardPositionFailReasonEnum[]` - причины недоступности продажи; на уровне строки инвентаря используются `CannotSellEntity`, `CannotSellEntityInShop`, `ContainerIsNotEmpty`. Пустой массив означает, что строка доступна к продаже в текущем контексте. Пустые контейнеры и не-контейнеры одного `prefabName` — одна строка; непустые контейнеры того же префаба — отдельная строка с `ContainerIsNotEmpty`.
 - `allowedShopUids: string[]` - при `CannotSellEntityInShop` в `sellFailReasons` — список магазинов, где продажа разрешена (как у [[#AddToSellCardResult]] / [[#SellCardPosition]]); иначе пустой массив или не используется клиентом.
 
 **Связано**

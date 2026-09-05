@@ -90,12 +90,13 @@ class EntityItem
 	string parentContainerUid;
 	string inventorySlotUid;
 	string ownerCharacterUid;
+	string ownerUid;
 	StorageTypeEnum storageType;
 }
 ```
 
 **Назначение**
-Сущность игрового мира в реестре (соответствует `EntityItemDto`). Элемент плоского списка из [[EntityManager.HttpMethods.md#getInventoryByCharacterUid]] и [[EntityManager.HttpMethods.md#findEntitiesByUidList]].
+Сущность игрового мира в реестре (соответствует `EntityItemDto`). Элемент плоского списка из [[EntityManager.HttpMethods.md#getInventoryByCharacterUid]] и [[EntityManager.HttpMethods.md#findEntitiesByUidList]]. Для техники `uid` совпадает с [[VehicleService.Entities.md#Vehicle|Vehicle.entityUid]]; последний водитель и выборка техники — [[VehicleService.md|VehicleService]], не это поле.
 
 **Свойства**
 - `uid: string` - идентификатор сущности.
@@ -105,7 +106,8 @@ class EntityItem
 - `angle: Angle|null` - угол в мире; `null`, если сущность не лежит в мире (в контейнере / слоте). Заполнен тогда же, когда `position`.
 - `parentContainerUid: string|null` - идентификатор родительского контейнера; `null`, если нет родителя-контейнера.
 - `inventorySlotUid: string|null` - идентификатор слота инвентаря / экипировки; `null`, если слот не задан.
-- `ownerCharacterUid: string|null` - идентификатор персонажа-владельца; `null`, если владелец не задан.
+- `ownerCharacterUid: string|null` - идентификатор персонажа, у которого сущность в инвентаре / экипировке; `null`, если не привязана к персонажу. Не путать с `ownerUid`.
+- `ownerUid: string|null` - владелец для доступа в [[SafeZoneService.md|safe-zone]] (`TSM_EntityProps.ownerUid`); `null`, если не задан. Слой safe-zone при `null` доступ не запрещает.
 - `storageType: StorageTypeEnum` - тип хранилища сущности (не null).
 
 Занятость слота считается по тройке: корневой слот персонажа — `ownerCharacterUid` + `inventorySlotUid` + `storageType`; слот в контейнере — `parentContainerUid` + `inventorySlotUid` + `storageType`. Один и тот же `inventorySlotUid` у персонажа или в контейнере допустим в разных `storageType`. Предметы без слота (`inventorySlotUid` = null) эту уникальность не занимают.
@@ -113,7 +115,7 @@ class EntityItem
 Вложенность восстанавливается по `parentContainerUid` и `inventorySlotUid` (ответ метода — плоский список, не дерево).
 
 **Связано**
-[[#Position]], [[#Angle]], [[#StorageTypeEnum]]
+[[#Position]], [[#Angle]], [[#StorageTypeEnum]], [[VehicleService.Entities.md#Vehicle]], [[SafeZoneService.md]]
 
 **Используется в**
 [[#GetInventoryByCharacterUidResult]], [[#FindEntitiesByUidListResult]]

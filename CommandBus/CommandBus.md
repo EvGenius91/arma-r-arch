@@ -6,7 +6,7 @@
 
 При постановке в очередь команда привязывается к активной [[../Architecture/GameManager.Entities.md#ServerSession|ServerSession]]. `getPendingCommands` отдаёт только pending текущей сессии. Поле `serverSessionUid` в JSON-RPC не передаётся.
 
-Целевой сервис по результатам выполнения обязан вернуть отчёт **по каждой команде**: статус `Completed` или `Fail`; при `Fail` — `FailReason`. После получения отчёта от сервиса CommandBus отправляет отчёт на бекенд ([[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]]).
+Целевой сервис по результатам выполнения обязан вернуть отчёт **по каждой команде**: статус `Completed` или `Fail`; при `Fail` — `failReason`. Все отчёты CommandBus отправляет пачкой через [[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]], включая отчёты с результирующим payload.
 
 HTTP-контракт: [[CommandBus.HttpMethods.md]]. Сущности: [[CommandBus.Entities.md]]. Каталог команд: [[Commands.md]].
 
@@ -30,14 +30,16 @@ CommandBus::run(): void
 CommandBus::reportCommands(array reports): void
 ```
 
-Принимает отчёты о выполнении команд от целевых сервисов. По каждой записи: `Completed` или `Fail` (+ `FailReason` при Fail). После приёма отправляет пачку на бекенд через [[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]].
+Принимает отчёты от целевых сервисов. По каждой записи: `Completed` или `Fail` (+ `failReason` при Fail). После приёма отправляет пачку на бекенд через [[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]].
 
-Элемент `reports` — [[CommandBus.Entities.md#CommandReport]].
+Элемент `reports` — [[CommandBus.Entities.md#BaseReport]]. Для обычных отчётов `payload = null`; для `ParsePrefab + Completed` передаётся [[CommandBus.Entities.md#ReportParsePrefabPayload]].
 
 ## См. также
 
 - [[CommandBus.HttpMethods.md]] — JSON-RPC `command@getPendingCommands`, `command@reportCommands`
-- [[CommandBus.Entities.md]] — `Command`, `CommandReport`, Result DTO
+- [[CommandBus.Entities.md]] — `Command`, `BaseReport`, payload и Result DTO
 - [[Commands.md]] — каталог команд
 - [[../Architecture/BackendGameMutation.md]] — принцип: бекенд решает, CommandBus применяет в мире
 - [[../Architecture/EntityManager.md]] — целевой сервис для команд сущностей (`enqueueCommand`)
+- [[../Architecture/SafeZoneService.md]] — целевой сервис для `AddSafeZone`; `SetEntityOwner` обновляет `TSM_EntityProps.ownerUidList`
+- [[../Architecture/AccessService.md]] — целевой сервис для `SetAccessByType`
