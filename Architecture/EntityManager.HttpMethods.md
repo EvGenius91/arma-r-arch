@@ -194,7 +194,8 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
         "parentContainerUid": null,
         "inventorySlotUid": "slot-backpack",
         "ownerCharacterUid": "char-42",
-        "storageType": "SCR_CharacterInventoryStorageComponent"
+        "storageType": "SCR_CharacterInventoryStorageComponent",
+        "hitZones": []
       },
       {
         "uid": "ent-can-001",
@@ -204,7 +205,10 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
         "parentContainerUid": "ent-backpack-1",
         "inventorySlotUid": null,
         "ownerCharacterUid": "char-42",
-        "storageType": "SCR_CharacterInventoryStorageComponent"
+        "storageType": "SCR_CharacterInventoryStorageComponent",
+        "hitZones": [
+          { "name": "Hull", "healthScaled": 0.6 }
+        ]
       }
     ]
   },
