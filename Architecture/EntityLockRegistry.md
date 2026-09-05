@@ -11,13 +11,13 @@ EntityManager  ──depends on──►  EntityLockRegistry
 TradeManager   ──depends on──►  EntityLockRegistry
 ```
 
-- [[EntityManager.md|EntityManager]] ставит uid в реестр через `Lock`, когда блокирующая ops по этому uid уходит на бекенд (in-flight), и снимает через `Unlock` после ответа. Пока ops только в исходящей очереди (ещё не ушли) — EM **не** держит lock. `EntityTransformChanged` не создаёт lock даже после отправки; см. [[EntityManager.Operations.md#entitytransformchanged]].
+- [[EntityManager.md|EntityManager]] ставит uid в реестр через `Lock`, когда блокирующая ops по этому uid уходит на бекенд (in-flight), и снимает через `Unlock` после ответа. Пока ops только в исходящей очереди (ещё не ушли) — EM **не** держит lock. `EntityTransformChanged` и `EntityHitZoneChanged` не создают lock даже после отправки; см. [[EntityManager.Operations.md#entitytransformchanged]], [[EntityManager.Operations.md#entityhitzonechanged]].
 - [[TradeManager.md|TradeManager]] на время продажи ставит `SellPending` в тот же реестр, чтобы EntityManager не принял дроп/передачу продаваемого uid.
 - Реестр **не** знает о содержимом контейнеров и не ходит на бекенд — только занятость `entityUid`.
 
 ## Назначение
 
-Пока сущность занята блокирующей операцией EntityManager **in-flight** либо продажей через Trade, повторный dispose / pick / sell локально запрещён. In-flight `EntityTransformChanged` сам по себе сущность занятой не делает:
+Пока сущность занята блокирующей операцией EntityManager **in-flight** либо продажей через Trade, повторный dispose / pick / sell локально запрещён. In-flight `EntityTransformChanged` и `EntityHitZoneChanged` сами по себе сущность занятой не делают:
 
 - EntityManager не даст выбросить / переложить / подобрать / передать uid, пока по нему летит пачка;
 - Trade не начнёт `sell`, если uid уже в lock (in-flight EM или чужой `SellPending`);
@@ -49,7 +49,7 @@ EntityManager.enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 
 | Сервис | Когда |
 |--------|--------|
-| [[EntityManager.md\|EntityManager]] | Для блокирующих `enqueue*`: `IsLocked`, `Lock` при уходе в in-flight и `Unlock` после ответа. `EntityTransformChanged` проходит без lock; очистка при hard-reset / `DeleteEntity` |
+| [[EntityManager.md\|EntityManager]] | Для блокирующих `enqueue*`: `IsLocked`, `Lock` при уходе в in-flight и `Unlock` после ответа. `EntityTransformChanged` и `EntityHitZoneChanged` проходят без lock; очистка при hard-reset / `DeleteEntity` |
 | [[TradeManager.md\|TradeManager]] | перед / в момент старта продажи — `IsLocked`; если свободен — `Lock(…, SellPending)`; после Fail sell — `Unlock`; после Ok sell — `Unlock` когда мир догнал / вместе с обработкой `DeleteEntity` |
 | Мир / UI (опционально) | только `IsLocked` для подсказок; не пишут в реестр в обход менеджеров |
 
@@ -124,7 +124,7 @@ IsLocked(entityUid, requiredScope?) → bool
 | `InventoryOps` | pick / drop / move / transfer / sell этого uid | операции с другими uid; езда на технике |
 | `ContainerDispose` | выбросить / передать / снять контейнер как предмет | вождение машины, движение по миру |
 
-`EntityTransformChanged` не относится к `InventoryOps`: синхронизация transform не должна блокировать вождение, физическое движение, inventory-операции или продажу. Сам EntityLockRegistry в её жизненном цикле не вызывается.
+`EntityTransformChanged` и `EntityHitZoneChanged` не относятся к `InventoryOps`: синхронизация transform / HitZone не должна блокировать вождение, физическое движение, inventory-операции или продажу. Сам EntityLockRegistry в их жизненном цикле не вызывается.
 
 Примеры:
 

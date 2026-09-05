@@ -4,7 +4,7 @@
 
 EntityManager хранит состояние всех сущностей в игре: техники, оружия, боеприпасов, одежды, экипировки, предметов инвентаря и других объектов, которые могут существовать в мире или быть привязаны к игроку.
 
-Выборка техники и атрибут «последний водитель» — зона [[VehicleService.md|VehicleService]], не EntityManager. Техника остаётся сущностью реестра: `Vehicle.entityUid` = [[EntityManager.Entities.md#EntityItem|EntityItem.uid]].
+Выборка техники и атрибут «последний водитель» — зона [[VehicleService.md|VehicleService]], не EntityManager. Техника остаётся сущностью реестра: `Vehicle.entityUid` = [[EntityManager.Entities.md#EntityItem|EntityItem.uid]]. Физическое состояние HitZone (колёса, стёкла, двигатель, корпус сейфа / постройки и т.п.) хранит EntityManager, не VehicleService.
 
 ## Зависимости
 
@@ -26,6 +26,7 @@ EntityManager является реестром игровых сущносте�
 - выдачу и сохранение `uid` сущности;
 - хранение текущего положения сущности: в мире, у игрока или внутри контейнера / в слоте;
 - **синхронизацию с бекендом** изменений владения и расположения (подбор, дроп, move, экипировка, передача, изменение позиции / угла в мире);
+- хранение и синхронизацию **физического состояния HitZone** экземпляра (разреженный оверлей относительно целого префаба: колёса, стёкла, двигатель, корпус сейфа / постройки и т.п.) — не зона [[VehicleService.md|VehicleService]], не [[CharacterStateManager (черновик) 3.md|CharacterStateManager]] (HP частей тела персонажа) и не [[LockManager.md|LockManager]];
 - заполнение инвентаря нового персонажа при спавне (`loadInventory`);
 - вызов [[EntityLockRegistry.md|EntityLockRegistry]] на время in-flight пачки (блок / разблок uid);
 - обновление связей при изменении инвентаря;
@@ -115,8 +116,8 @@ sequenceDiagram
 
 | Действие | Кто |
 |----------|-----|
-| Подбор / дроп / move / equip / unequip / transfer / split-merge / destroy сущности | EntityManager |
-| HP, жажда, голод, поза/координаты персонажа, cash вне Trade | CharacterStateManager |
+| Подбор / дроп / move / equip / unequip / transfer / split-merge / destroy сущности; HitZone сущностей мира | EntityManager |
+| HP частей тела персонажа, жажда, голод, поза/координаты персонажа, cash вне Trade | CharacterStateManager |
 | Buy / Sell | TradeManager → бекенд → CommandBus в мир |
 
 Если commit связей у персонажа на бекенде увеличивает `stateVersion` CharacterState, публикуется `CharacterStateChanged`. CSM только мягко сверяет версию; мир предметов уже согласован через EntityManager / CommandBus.
@@ -129,13 +130,14 @@ sequenceDiagram
 
 Полное описание сервиса: [[EntityLockRegistry.md]].
 
-**Правило:** блокировка uid для блокирующих ops EntityManager — **только через EntityLockRegistry**, и **только на время in-flight** (не на всё время очереди). `EntityTransformChanged` не создаёт lock.
+**Правило:** блокировка uid для блокирующих ops EntityManager — **только через EntityLockRegistry**, и **только на время in-flight** (не на всё время очереди). `EntityTransformChanged` и `EntityHitZoneChanged` не создают lock.
 
 | Момент | Вызов EntityLockRegistry |
 |--------|--------------------------|
 | Блокирующий `enqueue*` | `IsLocked`? если да (in-flight / SellPending) — отказ; иначе регистрация расположения + очередь **без** Lock |
 | `enqueueEntityTransformChanged` | обновить / заменить pending transform; lock не проверяется и не создаётся |
-| flush пачки (~1 с / barrier) | Для блокирующих ops: `Lock(…, ownerService: EntityManager)` → отправка; transform отправляется без lock |
+| `enqueueEntityHitZoneChanged` | обновить pending-оверлей HitZone; lock не проверяется и не создаётся |
+| flush пачки (~1 с / barrier) | Для блокирующих ops: `Lock(…, ownerService: EntityManager)` → отправка; transform и HitZone уходят без lock |
 | Ok / Fail с бекендом | `Unlock` |
 | Уже есть `SellPending` от Trade | отказ enqueue (не выбрасывать продаваемый предмет) |
 | CommandBus `DeleteEntity` | удалить сущность **даже при lock** → `Unlock` → очистить очередь ops по uid |
@@ -182,13 +184,14 @@ enqueuePickupEntity / enqueueDropEntity / enqueueMoveEntity
 | `DropEntity` | из инвентаря / слота → мир |
 | `MoveEntity` | между слотами / контейнерами |
 | `EntityTransformChanged` | обновление позиции и угла сущности, которая находится в мире |
+| `EntityHitZoneChanged` | обновление разреженного оверлея HitZone экземпляра |
 | `EquipItem` / `UnequipItem` | надеть / снять |
 | `SwapEquipment` | обмен слотов |
 | `TransferEntity` | передача другому персонажу |
 | `SplitStack` / `MergeStack` | стеки (если есть в проекте) |
 | `DestroyEntity` | уничтожение / снятие с реестра (контракт уточняется отдельно) |
 
-Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): регистрация уже произошедшего в мире изменения + очередь; для блокирующих ops `Lock` ставится при flush пачки. `EntityTransformChanged` отправляется без lock. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
+Публичная точка входа на игровом сервере — методы `enqueue*` (см. ниже): регистрация уже произошедшего в мире изменения + очередь; для блокирующих ops `Lock` ставится при flush пачки. `EntityTransformChanged` и `EntityHitZoneChanged` отправляются без lock. Вызывающий код (инвентарь / мир) **не** ходит в CSM и не собирает HTTP-пачки сам.
 
 ---
 
@@ -366,6 +369,32 @@ enqueueEntityTransformChanged(string entityUid, vector position, vector angle): 
 
 ---
 
+### enqueueEntityHitZoneChanged
+
+**Сигнатура:**
+
+```text
+enqueueEntityHitZoneChanged(string entityUid, string hitZoneName, float healthScaled): void
+```
+
+**Параметры:**
+
+- `entityUid` — идентификатор сущности, у которой изменилась HitZone;
+- `hitZoneName` — имя зоны (`HitZone.GetName()`);
+- `healthScaled` — здоровье зоны в диапазоне `0..1` (`HitZone.GetHealthScaled()`).
+
+**Описание:**
+
+1. Вызывается наблюдателем игрового мира, когда у сущности изменилось здоровье HitZone (в том числе программная установка HP).
+2. Проверяет, что сущность зарегистрирована.
+3. Ставит / обновляет pending `EntityHitZoneChanged` с текущим `resetGeneration`; `characterUid = null`, payload — полный разреженный оверлей `hitZones` (зоны с `healthScaled == 1` в список не входят; пустой список — сущность как из префаба).
+4. Для одного uid в pending хранится одна ops: map `name → healthScaled`; новый вызов сливается в этот оверлей. Пока HitZone этого uid in-flight, новые снимки продолжают объединяться в pending; второй запрос по тому же uid — после ответа на первый.
+5. Операция отправляется через общий flush, но не ставит lock и не выполняет физический rollback при Fail. Следующий снимок повторно выравнивает бекенд.
+
+Политика очереди: [[EntityManager.Operations.md#entityhitzonechanged]].
+
+---
+
 ## Дюпы и hard-reset
 
 При нескольких экземплярах одного `entityUid` в мире бекенд инициирует анализатор: hard-reset к истине бекенда и отсечение устаревших операций через `resetGeneration` на сущность.
@@ -385,6 +414,7 @@ enqueueEntityTransformChanged(string entityUid, vector position, vector angle): 
 7. Глобально стопорить все операции мира из‑за одной сущности.
 8. Блокировать вождение машины из‑за in-flight предмета в её инвентаре.
 9. Отказать CommandBus `DeleteEntity` из‑за локального lock.
+10. Класть HP HitZone техники / сейфа / постройки в [[VehicleService.md|VehicleService]] или в CharacterStateManager.
 
 ---
 
@@ -393,7 +423,7 @@ enqueueEntityTransformChanged(string entityUid, vector position, vector angle): 
 - [[Architecture.md]] — оглавление архитектуры менеджеров
 - [[BackendGameMutation.md]] — принцип применения изменений мира через CommandBus
 - [[EntityLockRegistry.md]] — общий реестр блокировок (EntityManager + Trade)
-- [[EntityManager.Entities.md]] — сущности реестра и результаты `getInventoryByCharacterUid` / `findEntitiesByUidList`
+- [[EntityManager.Entities.md]] — сущности реестра (`EntityItem`, `EntityHitZone`) и результаты `getInventoryByCharacterUid` / `findEntitiesByUidList`
 - [[EntityManager.Operations.md]] — логика операций и очередь
 - [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, игнор операций

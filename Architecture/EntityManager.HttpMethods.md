@@ -49,7 +49,7 @@ getInventoryByCharacterUid(string characterUid): list<EntityItemDto>
 
 **Результат**
 
-[[EntityManager.Entities.md#GetInventoryByCharacterUidResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]].
+[[EntityManager.Entities.md#GetInventoryByCharacterUidResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]] без заполненного `hitZones`.
 
 **Причины отказа**
 
@@ -150,10 +150,11 @@ findEntitiesByUidList(list<string> uidList): list<EntityItemDto>
 5. Скрытые сущности в результат не попадают.
 6. Сервис не бросает доменных исключений по этому методу; API оборачивает ответ в `FindEntitiesByUidListResult` со `status = Ok`.
 7. На уровне API: если `uidList` отсутствует или не массив — `InvalidParams` (request-level Fail).
+8. У каждой возвращённой сущности заполнен разреженный оверлей `hitZones` ([[EntityManager.Entities.md#EntityHitZone]]); пустой массив — префаб как есть. Этого поля нет в `getInventoryByCharacterUid`.
 
 **Результат**
 
-[[EntityManager.Entities.md#FindEntitiesByUidListResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]].
+[[EntityManager.Entities.md#FindEntitiesByUidListResult]] — при успехе `status = Ok`, `failReason = null`, `entities` = массив [[EntityManager.Entities.md#EntityItem]] с заполненным `hitZones`.
 
 **Причины отказа**
 
@@ -273,6 +274,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 | `DropEntity` | из инвентаря / слота → мир |
 | `MoveEntity` | между слотами / контейнерами |
 | `EntityTransformChanged` | изменение позиции и/или угла сущности в мире |
+| `EntityHitZoneChanged` | замена разреженного оверлея HitZone экземпляра |
 | `EquipItem` | надеть |
 | `UnequipItem` | снять |
 | `SwapEquipment` | обмен слотов |
@@ -314,6 +316,14 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 Для `EntityTransformChanged` поле `characterUid` равно `null`, а `storageType` в `payload` не передаётся. Операция допустима только для сущности, которая находится в мире, и обновляет `position` и `angle` одной согласованной парой.
 
+**`EntityHitZoneChanged`**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `hitZones` | array | Полный разреженный оверлей: элементы `{ name: string, healthScaled: number }` (`0..1`). Пустой массив — стереть оверлей (префаб как есть). |
+
+Для `EntityHitZoneChanged` поле `characterUid` равно `null`, а `storageType` в `payload` не передаётся. Бекенд **заменяет** сохранённый оверлей целиком; имена — opaque-строки (`HitZone.GetName()`). Зоны с `healthScaled == 1` в список не входят.
+
 **`TransferEntity`**
 
 | Поле | Тип | Описание |
@@ -339,8 +349,9 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 4. Пачка **не** атомарна по всем uid: отказ по uid A не откатывает уже применённые ops по uid B.
 5. Второй одновременный успешный take одной сущности → `AlreadyTaken`.
 6. Если `op.resetGeneration` не совпадает с текущим поколением сущности на бекенде → `StaleAfterReset`, мир по этой ops не двигать ([[EntityManager.DupeAnalyzer.md]]).
-7. Этот RPC обновляет истину владения / контейнера / позиции на бекенде. Мутации игрового мира с бекенда (спавн, `DeleteEntity` и т.п.) — через CommandBus ([[BackendGameMutation.md]]), не вместо этого метода.
+7. Этот RPC обновляет истину владения / контейнера / позиции / оверлея HitZone на бекенде. Мутации игрового мира с бекенда (спавн, `DeleteEntity` и т.п.) — через CommandBus ([[BackendGameMutation.md]]), не вместо этого метода.
 8. Для `EntityTransformChanged` игровой сервер не откатывает физическое перемещение при `Fail`: ошибка журналируется, а следующий снимок transform повторно выравнивает состояние бекенда.
+9. Для `EntityHitZoneChanged` игровой сервер не откатывает HP зон при `Fail`: ошибка журналируется, а следующий снимок оверлея повторно выравнивает бекенд.
 
 ### Результат (`ApplyEntityOperationsResult`)
 
@@ -359,7 +370,7 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 
 Индексация **1:1** с входным `operations[]` (без дублирования `entityUid` в результате — идентификация по индексу).
 
-Игровой сервер по индексам откатывает расположение в мире только для упавших блокирующих ops и снимает lock затронутых uid. Для `EntityTransformChanged` физического отката и lock нет ([[EntityManager.Operations.md#entitytransformchanged]]).
+Игровой сервер по индексам откатывает расположение в мире только для упавших блокирующих ops и снимает lock затронутых uid. Для `EntityTransformChanged` и `EntityHitZoneChanged` физического отката и lock нет ([[EntityManager.Operations.md#entitytransformchanged]], [[EntityManager.Operations.md#entityhitzonechanged]]).
 
 ### Причины отказа на уровне запроса (`failReason`)
 
@@ -404,6 +415,34 @@ applyOperations(operations[]): ApplyEntityOperationsResult
 ```
 
 Успех возвращает элемент `{ "status": "Ok", "failReason": null }`. Для этой операции ожидаемы стандартные отказы `EntityNotFound`, `StaleAfterReset` и `InvalidLocation` (например, если сущность уже находится в контейнере / слоте).
+
+### Запрос — обновление оверлея HitZone
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "entity@applyOperations",
+  "params": {
+    "operations": [
+      {
+        "entityUid": "vehicle-001",
+        "type": "EntityHitZoneChanged",
+        "resetGeneration": 0,
+        "characterUid": null,
+        "payload": {
+          "hitZones": [
+            { "name": "Engine", "healthScaled": 0.4 },
+            { "name": "Wheel_1", "healthScaled": 0.0 }
+          ]
+        }
+      }
+    ]
+  },
+  "id": 42
+}
+```
+
+Успех возвращает элемент `{ "status": "Ok", "failReason": null }`. Для этой операции ожидаемы стандартные отказы `EntityNotFound`, `StaleAfterReset` и `InvalidOperation` (невалидный `healthScaled` или структура `hitZones`).
 
 ### Запрос — Drop затем PickUp одной банки
 

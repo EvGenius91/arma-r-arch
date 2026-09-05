@@ -26,7 +26,7 @@
 
 Заспавнить сущность (предмет, технику и т.п.) в игровом мире по данным с бекенда.
 
-Когда команды приходят с бекенда, CommandBus передаёт их в EntityManager. EntityManager **одним запросом** получает данные по сущностям ([[../Architecture/EntityManager.HttpMethods.md#findEntitiesByUidList|entity@findEntitiesByUidList]]) по `payload.entityUid` и спавнит их в мире. После этого отправляет отчёт по **каждой** команде в `CommandBus::reportCommands`.
+Когда команды приходят с бекенда, CommandBus передаёт их в EntityManager. EntityManager **одним запросом** получает данные по сущностям ([[../Architecture/EntityManager.HttpMethods.md#findEntitiesByUidList|entity@findEntitiesByUidList]]) по `payload.entityUid` и спавнит их в мире. После создания экземпляра накладывает разреженный оверлей HitZone из `EntityItem.hitZones`: для каждой записи вызывает `SetHealthScaled` на зоне с совпадающим `HitZone.GetName()`. Имена, которых нет на префабе, пропускаются (журналируются). После этого отправляет отчёт по **каждой** команде в `CommandBus::reportCommands`.
 
 **Возможные причины невыполнения (`FailReason`):**
 

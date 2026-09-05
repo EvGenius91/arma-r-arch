@@ -2,7 +2,7 @@
 
 Назад: [[Architecture.md]] · [[VehicleService.Entities.md]] · [[VehicleService.HttpMethods.md]]
 
-VehicleService ищет технику на бекенде и применяет пачку операций над ней. Это не реестр сущностей: положение, владение и префаб техники хранит [[EntityManager.md|EntityManager]]. `entityUid` совпадает с [[EntityManager.Entities.md#EntityItem|EntityItem.uid]]; атрибут «последний водитель» живёт здесь, не в EntityManager.
+VehicleService ищет технику на бекенде и применяет пачку операций над ней. Это не реестр сущностей: положение, владение, префаб и физическое состояние HitZone техники хранит [[EntityManager.md|EntityManager]]. `entityUid` совпадает с [[EntityManager.Entities.md#EntityItem|EntityItem.uid]]; атрибут «последний водитель» живёт здесь, не в EntityManager.
 
 Доменный контракт бекенда: `VehicleService` (`Contracts/VehicleService/`). RPC: [[VehicleService.HttpMethods.md|vehicle@applyOperations]].
 

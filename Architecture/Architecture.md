@@ -66,7 +66,7 @@
 
 ## VehicleService
 
-Доменный сервис техники на бекенде: поиск по последнему водителю и/или радиусу в мире. Не реестр сущностей — положение и владение техники хранит EntityManager; `entityUid` = `EntityItem.uid`.
+Доменный сервис техники на бекенде: поиск по последнему водителю и/или радиусу в мире. Не реестр сущностей — положение, владение и HitZone техники хранит EntityManager; `entityUid` = `EntityItem.uid`.
 
 - [[VehicleService.md]] — обзор, `findVehicle`, `applyOperations`, `registerVehicle`
 - [[VehicleService.Entities.md]] — `Vehicle`, `VehicleFilter`, `PositionRadiusFilter`, `VehicleOperation`
@@ -74,10 +74,10 @@
 
 ## EntityManager
 
-Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения и расположения с бекендом — зона EntityManager, не CharacterStateManager. При спавне / респавне заполняет инвентарь нового персонажа через `loadInventory`. **Зависит от EntityLockRegistry.**
+Реестр сущностей мира (техника, предметы инвентаря / экипировки). Предмет остаётся сущностью; к инвентарю привязан контейнером и слотом. Синхронизация владения, расположения и HitZone экземпляра с бекендом — зона EntityManager, не CharacterStateManager и не VehicleService. При спавне / респавне заполняет инвентарь нового персонажа через `loadInventory`. **Зависит от EntityLockRegistry.**
 
 - [[EntityManager.md]] — реестр, зависимость от EntityLockRegistry, `loadInventory`, `enqueueCommand`, enqueue*
-- [[EntityManager.Entities.md]] — `EntityItem`, `StorageTypeEnum`, `GetInventoryByCharacterUidResult`, `FindEntitiesByUidListResult`
+- [[EntityManager.Entities.md]] — `EntityItem`, `EntityHitZone`, `StorageTypeEnum`, `GetInventoryByCharacterUidResult`, `FindEntitiesByUidListResult`
 - [[EntityManager.Operations.md]] — очередь, flush (~1 с / barrier), порядок пачки, lock на in-flight
 - [[EntityManager.HttpMethods.md]] — JSON-RPC `entity@getInventoryByCharacterUid`, `entity@findEntitiesByUidList`, `entity@applyOperations`
 - [[EntityManager.DupeAnalyzer.md]] — анализатор дюпов, hard-reset, `resetGeneration`, игнор устаревших операций

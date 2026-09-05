@@ -16,7 +16,7 @@ class Vehicle
 ```
 
 **Назначение**
-Техника в выборке [[VehicleService.md#findVehicle]]. Соответствует `VehicleDto`. Не заменяет [[EntityManager.Entities.md#EntityItem|EntityItem]]: здесь только идентификатор сущности и последний водитель.
+Техника в выборке [[VehicleService.md#findVehicle]]. Соответствует `VehicleDto`. Не заменяет [[EntityManager.Entities.md#EntityItem|EntityItem]]: здесь только идентификатор сущности и последний водитель. Оверлей HitZone — в EntityManager.
 
 **Свойства**
 - `entityUid: string` - идентификатор сущности техники; совпадает с [[EntityManager.Entities.md#EntityItem|EntityItem.uid]].
