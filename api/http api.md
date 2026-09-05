@@ -1354,6 +1354,8 @@
 | `ownerCharacterUid`  | string \| null | Персонаж-владелец                             |
 | `storageType`        | string         | Тип хранилища (`StorageTypeEnum`, не null)    |
 
+В `getInventoryByCharacterUid` поле `hitZones` не отдаётся.
+
 **Пример запроса**
 
 ```json
@@ -1438,7 +1440,7 @@
 | `failReason` | string \| null | При `Ok` — `null`; при Fail — `"InvalidParams"`                          |
 | `entities`   | array \| null  | При `Ok`: плоский массив `EntityItem` — запрошенные uid и потомки (может быть пустым); при `Fail` — `null` |
 
-Элемент `entities` (`EntityItem`) — те же поля, что у `getInventoryByCharacterUid`.
+Элемент `entities` (`EntityItem`) — те же поля, что у `getInventoryByCharacterUid`, плюс заполненный разреженный `hitZones`: массив `{ name: string, healthScaled: number }` (может быть пустым — префаб как есть).
 
 **Пример запроса**
 
@@ -1521,9 +1523,9 @@
 | Поле              | Тип    | Описание                                                                 |
 | ----------------- | ------ | ------------------------------------------------------------------------ |
 | `entityUid`       | string | Идентификатор сущности                                                   |
-| `type`            | string | `PickUpEntity`, `DropEntity`, `MoveEntity`, `EntityTransformChanged`, `EquipItem`, `UnequipItem`, `SwapEquipment`, `TransferEntity`, `SplitStack`, `MergeStack`, `DestroyEntity` |
+| `type`            | string | `PickUpEntity`, `DropEntity`, `MoveEntity`, `EntityTransformChanged`, `EntityHitZoneChanged`, `EquipItem`, `UnequipItem`, `SwapEquipment`, `TransferEntity`, `SplitStack`, `MergeStack`, `DestroyEntity` |
 | `resetGeneration` | number | Поколение сущности на момент отправки                                    |
-| `characterUid`    | string \| null | Персонаж-инициатор; `null` для `EntityTransformChanged`                  |
+| `characterUid`    | string \| null | Персонаж-инициатор; `null` для `EntityTransformChanged` и `EntityHitZoneChanged` |
 | `payload`         | object | Поля по `type` (см. ниже)                                                |
 
 `payload` для основных типов (`storageType` обязателен для операций, изменяющих инвентарное расположение):
@@ -1533,6 +1535,7 @@
 | `PickUpEntity` / `MoveEntity` | `targetContainerUid` (string \| null; `null` для корневого слота экипировки), `slot` (string \| null; обязателен при `targetContainerUid` = null), `storageType` (string) |
 | `DropEntity` | `position` `{ x, y, z }` (числа), `angle` `{ x, y, z }` (числа), `storageType` (string) |
 | `EntityTransformChanged` | `position` `{ x, y, z }` (числа), `angle` `{ x, y, z }` (числа); без `storageType` |
+| `EntityHitZoneChanged` | `hitZones` — массив `{ name: string, healthScaled: number }` (`0..1`); пустой массив стирает оверлей; без `storageType`; бекенд заменяет оверлей целиком |
 | `TransferEntity` | `toCharacterUid` (string), `targetContainerUid` (string \| null), `slot` (string \| null), `storageType` (string) |
 
 Остальные типы — см. [EntityManager.HttpMethods.md](../Architecture/EntityManager.HttpMethods.md).
