@@ -319,8 +319,19 @@ reportCommands(BaseReport[] reports): void
           "prefabData": [
             {
               "prefabName": "Prefabs/Items/example.et",
+              "radius": 0.15,
+              "isContainer": false,
+              "isVehicle": false,
               "weight": 1.5,
-              "volume": 2.25
+              "volume": 2.25,
+              "slotSizeX": 1,
+              "slotSizeY": 1,
+              "slotSizeZ": 2,
+              "maxWeight": null,
+              "maxVolume": null,
+              "maxSlotSizeX": null,
+              "maxSlotSizeY": null,
+              "maxSlotSizeZ": null
             }
           ]
         }

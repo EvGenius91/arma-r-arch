@@ -347,18 +347,42 @@ class SetAccessByTypePayload
 class PrefabDataDto
 {
 	string prefabName;
+	float radius;
+	bool isContainer;
+	bool isVehicle;
 	float weight;
 	float volume;
+	int slotSizeX;
+	int slotSizeY;
+	int slotSizeZ;
+	float|null maxWeight;
+	float|null maxVolume;
+	int|null maxSlotSizeX;
+	int|null maxSlotSizeY;
+	int|null maxSlotSizeZ;
 }
 ```
 
 **Назначение**
-Характеристики одного префаба, вычисленные игровым сервером.
+Физические характеристики одного префаба, снятые игровым сервером для заполнения [[../Architecture/EntityManager.Entities.md#EntityParams|EntityParamsDto]]. Не включает `uid`, `description` и `spawnPlaceType` — их задаёт бекенд.
 
 **Свойства**
 - `prefabName: string` — имя префаба из команды.
+- `radius: float` — радиус, который занимает сущность.
+- `isContainer: bool` — признак контейнера.
+- `isVehicle: bool` — признак техники.
 - `weight: float` — вес сущности.
 - `volume: float` — объём сущности.
+- `slotSizeX: int` — размер сущности по оси X в слотах.
+- `slotSizeY: int` — размер сущности по оси Y в слотах.
+- `slotSizeZ: int` — размер сущности по оси Z в слотах.
+- `maxWeight: float|null` — максимальный вес содержимого контейнера; `null`, если `isContainer = false`.
+- `maxVolume: float|null` — максимальный объём содержимого контейнера; `null`, если `isContainer = false`.
+- `maxSlotSizeX: int|null` — максимальный размер слота контейнера по оси X; `null`, если `isContainer = false`.
+- `maxSlotSizeY: int|null` — максимальный размер слота контейнера по оси Y; `null`, если `isContainer = false`.
+- `maxSlotSizeZ: int|null` — максимальный размер слота контейнера по оси Z; `null`, если `isContainer = false`.
+
+Если `isContainer = true`, все `max*` обязательны и неотрицательны (то же правило, что у [[../Architecture/EntityManager.Entities.md#EntityParams|EntityParamsDto]]).
 
 **Используется в**
 [[#ReportParsePrefabPayload]]

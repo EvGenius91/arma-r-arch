@@ -2,7 +2,7 @@
 
 Назад: [[EntityManager.md]] · [[EntityManager.HttpMethods.md]]
 
-Доменный контракт бекенда: `EntityRegistryService` (`Contracts/EntityRegistryService/`), DTO `EntityItemDto` / `EntityHitZoneDto` / `PositionDto` / `AngleDto`, enum `StorageTypeEnum`.
+Доменный контракт бекенда: `EntityRegistryService` (`Contracts/EntityRegistryService/`), DTO `EntityItemDto` / `EntityHitZoneDto` / `EntityParamsDto` / `PositionDto` / `AngleDto`, enum `StorageTypeEnum`.
 
 ### StorageTypeEnum
 
@@ -147,6 +147,64 @@ class EntityItem
 
 **Используется в**
 [[#GetInventoryByCharacterUidResult]], [[#FindEntitiesByUidListResult]]
+
+### EntityParams
+
+**Сигнатура**
+```
+class EntityParams
+{
+	string uid;
+	string prefabName;
+	float radius;
+	SpawnPlaceTypeEnum spawnPlaceType;
+	string|null description;
+	bool isContainer;
+	bool isVehicle;
+	float weight;
+	float volume;
+	int slotSizeX;
+	int slotSizeY;
+	int slotSizeZ;
+	float|null maxWeight;
+	float|null maxVolume;
+	int|null maxSlotSizeX;
+	int|null maxSlotSizeY;
+	int|null maxSlotSizeZ;
+}
+```
+
+**Назначение**
+Параметры префаба в таблице `entity_params` (соответствует `EntityParamsDto`). Каталог характеристик типа сущности, не экземпляр в мире ([[#EntityItem]]).
+
+Физические поля (`prefabName`, `radius`, `isContainer`, `isVehicle`, `weight`, `volume`, `slotSize*`, `max*`) приходят из команды [[../CommandBus/Commands.md#ParsePrefab|ParsePrefab]] / [[../CommandBus/CommandBus.Entities.md#PrefabDataDto|PrefabDataDto]]. `uid`, `description` и `spawnPlaceType` задаёт бекенд.
+
+Если `isContainer = true`, все `max*` обязательны и неотрицательны.
+
+**Свойства**
+- `uid: string` — идентификатор записи; задаёт бекенд.
+- `prefabName: string` — имя префаба; уникальный ключ каталога.
+- `radius: float` — радиус, который занимает сущность; из `PrefabDataDto`.
+- `spawnPlaceType: SpawnPlaceTypeEnum` — тип места для спавна; задаёт бекенд. Значения: `any`, `any_vehicle`, `land_vehicle`, `helicopter_vehicle`.
+- `description: string|null` — текстовое описание каталога; задаёт бекенд.
+- `isContainer: bool` — признак контейнера; из `PrefabDataDto`.
+- `isVehicle: bool` — признак техники; из `PrefabDataDto`.
+- `weight: float` — вес сущности; из `PrefabDataDto`.
+- `volume: float` — объём сущности; из `PrefabDataDto`.
+- `slotSizeX: int` — размер сущности по оси X в слотах; из `PrefabDataDto`.
+- `slotSizeY: int` — размер сущности по оси Y в слотах; из `PrefabDataDto`.
+- `slotSizeZ: int` — размер сущности по оси Z в слотах; из `PrefabDataDto`.
+- `maxWeight: float|null` — максимальный вес содержимого контейнера; из `PrefabDataDto`.
+- `maxVolume: float|null` — максимальный объём содержимого контейнера; из `PrefabDataDto`.
+- `maxSlotSizeX: int|null` — максимальный размер слота контейнера по оси X; из `PrefabDataDto`.
+- `maxSlotSizeY: int|null` — максимальный размер слота контейнера по оси Y; из `PrefabDataDto`.
+- `maxSlotSizeZ: int|null` — максимальный размер слота контейнера по оси Z; из `PrefabDataDto`.
+
+**Связано**
+[[../CommandBus/CommandBus.Entities.md#PrefabDataDto]], [[../CommandBus/Commands.md#ParsePrefab]]
+
+**Используется в**
+`EntityRegistryService.getEntityParamsListByPrefabName`
 
 ### GetInventoryByCharacterUidResult
 

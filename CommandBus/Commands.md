@@ -87,7 +87,7 @@
 
 **Описание:**
 
-Определить вес и объём каждого префаба из `payload.prefabList`. После обработки сервис формирует [[CommandBus.Entities.md#ReportParsePrefabPayload]] и добавляет отчёт в пачку `CommandBus::reportCommands` / [[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]].
+Собрать физические характеристики каждого префаба из `payload.prefabList` для заполнения [[../Architecture/EntityManager.Entities.md#EntityParams|EntityParamsDto]] (`EntityRegistryService`). Игра возвращает поля, которые можно снять с префаба (`radius`, `isContainer`, `isVehicle`, `weight`, `volume`, размеры слота и ёмкость контейнера). `uid`, `description` и `spawnPlaceType` игра не передаёт — их задаёт бекенд. После обработки сервис формирует [[CommandBus.Entities.md#ReportParsePrefabPayload]] и добавляет отчёт в пачку `CommandBus::reportCommands` / [[CommandBus.HttpMethods.md#reportCommands|command@reportCommands]].
 
 Пример успешного результирующего payload:
 
@@ -96,8 +96,35 @@
   "prefabData": [
     {
       "prefabName": "Prefabs/Items/example.et",
+      "radius": 0.15,
+      "isContainer": false,
+      "isVehicle": false,
       "weight": 1.5,
-      "volume": 2.25
+      "volume": 2.25,
+      "slotSizeX": 1,
+      "slotSizeY": 1,
+      "slotSizeZ": 2,
+      "maxWeight": null,
+      "maxVolume": null,
+      "maxSlotSizeX": null,
+      "maxSlotSizeY": null,
+      "maxSlotSizeZ": null
+    },
+    {
+      "prefabName": "Prefabs/Items/Equipment/Backpacks/Backpack_01.et",
+      "radius": 0.4,
+      "isContainer": true,
+      "isVehicle": false,
+      "weight": 2.0,
+      "volume": 8.0,
+      "slotSizeX": 4,
+      "slotSizeY": 5,
+      "slotSizeZ": 2,
+      "maxWeight": 40.0,
+      "maxVolume": 30.0,
+      "maxSlotSizeX": 6,
+      "maxSlotSizeY": 6,
+      "maxSlotSizeZ": 4
     }
   ]
 }
